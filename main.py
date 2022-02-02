@@ -1,5 +1,6 @@
 
 import numpy as np
+from numpy.random import SeedSequence
 import pandas as pd
 import gym
 
@@ -10,7 +11,7 @@ from memory_evolution.envs import MemoForagingEnv
 
 if __name__ == '__main__':
 
-    env = MemoForagingEnv()  # env = gym.make('CartPole-v0')
+    env = MemoForagingEnv(3, 5, seed=2002)  # env = gym.make('CartPole-v0')
     check_env(env)  # todo: move in tests
 
     # print(env.action_space)  # Discrete(4)
@@ -20,7 +21,7 @@ if __name__ == '__main__':
     # print(env.observation_space.shape)  # (5, 5, 1)
     # print(env.observation_space.sample())  # [[[102] ... [203]]] / [[[243] ... [64]]] / each time different
 
-    for i_episode in range(20):
+    for i_episode in range(3):#20):
         observation = env.reset()
         t = 0
         for t in range(100):
