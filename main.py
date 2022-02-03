@@ -1,3 +1,4 @@
+from pprint import pprint
 
 import numpy as np
 from numpy.random import SeedSequence
@@ -6,12 +7,12 @@ import gym
 
 from gym.utils.env_checker import check_env  # from stable_baselines.common.env_checker import check_env
 
-from memory_evolution.envs import MemoForagingEnv
+from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv
 
 
 if __name__ == '__main__':
 
-    env = MemoForagingEnv(3, 5, seed=2002)  # env = gym.make('CartPole-v0')
+    env = BaseForagingEnv(3, 5, seed=2002)  # env = gym.make('CartPole-v0')
     check_env(env)  # todo: move in tests
 
     # print(env.action_space)  # Discrete(4)
@@ -32,6 +33,9 @@ if __name__ == '__main__':
             assert env.step_count == t, (env.step_count, t)
             observation, reward, done, info = env.step(action)
             assert env.step_count == t + 1, (env.step_count, t)
+            pprint(info)
+            print(info['state']['agent_position'])
+            print(info['state']['food_items'][0])
             if done:
                 print("Episode finished after {} timesteps".format(t + 1))
                 break

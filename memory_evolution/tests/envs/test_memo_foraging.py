@@ -26,22 +26,22 @@ class TestMemoForagingEnv(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.env = MemoForagingEnv()
-        cls.env2 = MemoForagingEnv(5, 3, seed=2002)
+        cls.env = BaseForagingEnv()
+        cls.env2 = BaseForagingEnv(5, 3, seed=2002)
 
     @classmethod
     def tearDownClass(cls) -> None:
         del cls.env, cls.env2
 
     def test_class_constructor(self):
-        env = MemoForagingEnv()
-        env = MemoForagingEnv(3, 5, seed=2002)
-        env = MemoForagingEnv(50, seed=2002)
-        env = MemoForagingEnv(50, 100, seed=2002)
-        env = MemoForagingEnv(n_channels=3, seed=2002)
+        env = BaseForagingEnv()
+        env = BaseForagingEnv(3, 5, seed=2002)
+        env = BaseForagingEnv(50, seed=2002)
+        env = BaseForagingEnv(50, 100, seed=2002)
+        env = BaseForagingEnv(n_channels=3, seed=2002)
 
     def test_valid_agent_idxes(self):
-        maze = MemoForagingEnv(3, 5, seed=2002)._get_new_maze()
+        maze = BaseForagingEnv(3, 5, seed=2002)._get_new_maze()
         maze[0, 0, 0] = 0
         maze[0, 1, 0] = 200
 
@@ -50,12 +50,12 @@ class TestMemoForagingEnv(unittest.TestCase):
                         {'clear_cache': True},
                         {'clear_cache': False},
                         {'clear_cache': False}, ]:
-            mask = MemoForagingEnv.valid_agent_idxes(maze, get_list=False, clear_cache=options['clear_cache'])
+            mask = BaseForagingEnv.valid_agent_idxes(maze, get_list=False, clear_cache=options['clear_cache'])
             true_mask = np.asarray([[0, 1, 1, 1, 1], [1]*5, [1]*5], dtype=bool)[:, :, None]
             self.assertEqual(true_mask.dtype, mask.dtype)
             assert_array_equal(true_mask, mask)
 
-            valid_idxes = MemoForagingEnv.valid_agent_idxes(maze, get_list=True, clear_cache=options['clear_cache'])
+            valid_idxes = BaseForagingEnv.valid_agent_idxes(maze, get_list=True, clear_cache=options['clear_cache'])
             true_valid_idxes = [(i, j) for i in range(maze.shape[0]) for j in range(maze.shape[1])]
             true_valid_idxes.remove((0, 0))
             # for pos in valid_positions:

@@ -1,1 +1,2 @@
-from memory_evolution.envs.memo_foraging import MemoForagingEnv
+from .base_foraging import BaseForagingEnv
+from .maze_foraging import MazeForagingEnv
