@@ -33,9 +33,9 @@ if __name__ == '__main__':
             assert env.step_count == t, (env.step_count, t)
             observation, reward, done, info = env.step(action)
             assert env.step_count == t + 1, (env.step_count, t)
-            pprint(info)
             print(info['state']['agent_position'])
             print(info['state']['food_items'][0])
+            # pprint(info)
             if done:
                 print("Episode finished after {} timesteps".format(t + 1))
                 break

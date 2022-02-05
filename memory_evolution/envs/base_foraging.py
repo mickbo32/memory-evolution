@@ -1,13 +1,15 @@
-from abc import ABCMeta, abstractmethod
 from collections import defaultdict, Counter
 import math
 from numbers import Number, Real
 from typing import Optional, Union, Any
 from warnings import warn
 
-import numpy as np
 import gym
 from gym import spaces
+import matplotlib.pyplot as plt
+import numpy as np
+
+from memory_evolution.utils import MustOverride, override
 
 
 class Texture:
@@ -103,7 +105,7 @@ class FoodItem:
         return f"{__name__ if __name__ != '__main__' else ''}.{type(self).__qualname__}({self.pos!r})"
 
 
-class BaseForagingEnv(gym.Env):
+class BaseForagingEnv(gym.Env, MustOverride):
     """Custom Environment that follows gym interface"""
     metadata = {'render.modes': ['human']}
 
@@ -188,7 +190,7 @@ class BaseForagingEnv(gym.Env):
     def close(self):
         pass
 
-    # todo: @override
+    @override
     def _init_state(self):
         """Create and return a new environment state (used for initialization or reset)"""
 
@@ -227,7 +229,7 @@ class BaseForagingEnv(gym.Env):
 
     def _is_done(self):
         self.debug_info['_is_done'] = {}
-        return False
+        return True
 
     def _get_info(self):
         """Get debugging info (the environment state, plus some extra useful information)."""
