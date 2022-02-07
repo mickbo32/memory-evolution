@@ -1,18 +1,25 @@
 from pprint import pprint
 
+import gym
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 from numpy.random import SeedSequence
 import pandas as pd
-import gym
 
 from gym.utils.env_checker import check_env  # from stable_baselines.common.env_checker import check_env
 
 from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv
 
+mpl.use('Qt5Agg')  # Change matplotlib backend to show correctly in PyCharm.
+
 
 if __name__ == '__main__':
 
-    env = BaseForagingEnv(3, 5, seed=2002)  # env = gym.make('CartPole-v0')
+    # env = gym.make('CartPole-v0')
+    # env = BaseForagingEnv(3, 5, seed=2002)  # env = gym.make('CartPole-v0')
+    env = BaseForagingEnv(3, 3, seed=2002, head_direction=False)  # env = gym.make('CartPole-v0')
+    # todo foods sovrapposti
     check_env(env)  # todo: move in tests
 
     # print(env.action_space)  # Discrete(4)
@@ -22,7 +29,7 @@ if __name__ == '__main__':
     # print(env.observation_space.shape)  # (5, 5, 1)
     # print(env.observation_space.sample())  # [[[102] ... [203]]] / [[[243] ... [64]]] / each time different
 
-    for i_episode in range(3):#20):
+    for i_episode in range(2):#20):
         observation = env.reset()
         t = 0
         for t in range(100):
@@ -34,9 +41,10 @@ if __name__ == '__main__':
             observation, reward, done, info = env.step(action)
             assert env.step_count == t + 1, (env.step_count, t)
             print(info['state']['agent_position'])
-            print(info['state']['food_items'][0])
+            print(len(info['state']['food_items']), info['state']['food_items'])
             # pprint(info)
             if done:
+                env.render()
                 print("Episode finished after {} timesteps".format(t + 1))
                 break
         else:

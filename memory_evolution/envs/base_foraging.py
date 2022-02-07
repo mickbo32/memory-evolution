@@ -6,6 +6,7 @@ from warnings import warn
 
 import gym
 from gym import spaces
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -27,7 +28,6 @@ class Pos:
     """Coordinates of a Position.
     `coords` coordinates should be all float
     """
-    # todo: make it immutable
 
     def __init__(self, *coords):
         # if ndim <= 0:
@@ -37,7 +37,7 @@ class Pos:
         assert isinstance(coords, tuple)
         if not all(isinstance(c, float) for c in coords):
             raise TypeError('`coords` coordinates should be all float')
-        self._coords = coords
+        self._coords = tuple(coords)
 
     @property
     def ndim(self):
@@ -51,6 +51,14 @@ class Pos:
 
     def __getitem__(self, item):
         return self._coords[item]
+
+    def __eq__(self, other):
+        if isinstance(other, Pos):
+            return self._coords == other._coords
+        return False
+
+    def __hash__(self):
+        return hash(self._coords)
 
     @property
     def x(self):
@@ -70,20 +78,40 @@ class Pos:
             raise AttributeError('When `ndim` is higher than 3 or less than 3, `z` attribute is not supported')
         return self._coords[2]
 
-    def __str__(self):
+    def __repr__(self):
         return (f"{type(self).__name__}("
                 + ", ".join([str(c) for c in self._coords]) + ")")
-
-    def __repr__(self):
-        return (f"{__name__ if __name__ != '__main__' else ''}.{type(self).__qualname__}("
-                + ", ".join([str(c) for c in self._coords]) + ")")
+        # return (f"{__name__ if __name__ != '__main__' else ''}.{type(self).__qualname__}("
+        #         + ", ".join([str(c) for c in self._coords]) + ")")
 
 
 class Agent:
     """Agent"""
 
-    def __init__(self, pos: Pos):
+    def __init__(self, pos: Pos, head_direction: bool = False):
         self.pos = pos
+        self._has_head_direction = head_direction
+        self._head_direction = None
+        if head_direction and self.pos.ndim != 2:
+            raise NotADirectoryError("`head_direction` not implemented yet for spaces different from 2D space")
+
+    @property
+    def head_direction(self):
+        if not self._has_head_direction:
+            raise AttributeError(f"Agent object at {hex(id(self))} doesn't have head direction.")
+        return self._head_direction
+
+    @head_direction.setter
+    def head_direction(self, value):
+        if not isinstance(value, (int, float)):
+            raise TypeError("`head_direction` must be int or float")
+        if not (0 <= value < 360):
+            raise ValueError("`head_direction` must be in the [0,360) range.")
+        self._head_direction = value
+
+    @property
+    def has_head_direction(self):
+        return self._has_head_direction
 
     def __str__(self):
         return f"{type(self).__name__}({self.pos})"
@@ -112,25 +140,41 @@ class BaseForagingEnv(gym.Env, MustOverride):
     def __init__(self,
                  height: int = 100,
                  width: Optional[int] = None,  # if None => square maze
-                 n_channels: int = 1,
                  n_food_items: int = 3,
                  *,
+                 n_channels: int = 1,
                  # color_reversed: bool = False,  # if False => white=255, black=0; if True => white=0, black=255;
                  seed=None,
+                 head_direction: bool = True,
                  ) -> None:
         super().__init__()
 
-        self._num_actions = 4  # left, straight, right, none
+        if head_direction:
+            self._num_actions = 4  # rotate left, go straight, rotate right, none
+        else:
+            self._num_actions = 5  # left, up, right, down, none
         self._height = height
         self._width = height if width is None else width
         self._n_channels = n_channels
         self._n_food_items = n_food_items
         self._seed = seed
+        self.agent_color = np.asarray([0])
+        self.food_color = np.asarray([0])
+        # todo: background color(, borders color)
+        self._figure, self._ax = plt.subplots()
+        self.rendering_pause_interval = .1  # 1e-20
         self.debug_info = defaultdict(dict)
+
+        # head direction
+        self._head_direction_mode = head_direction
+        if head_direction:
+            self._head_rotation_angle = 90
 
         self.step_count = None
         self._agent = None
         self._food_items = None
+        self.__food_items_poses = set()
+        self._state_img = None  # todo: make state (env_state) an object
 
         self.action_space = spaces.Discrete(self._num_actions, seed=self._seed)
         self.observation_space = spaces.Box(low=0, high=255,
@@ -185,34 +229,109 @@ class BaseForagingEnv(gym.Env, MustOverride):
         return observation
 
     def render(self, mode='human'):
-        pass  # todo
+        # print(self._state_img)
+        self._ax.cla()
+        self._ax.matshow(self._state_img, cmap='gray')
+        plt.pause(self.rendering_pause_interval)
 
     def close(self):
-        pass
+        self._ax.cla()
+        self._figure.clf()
+        plt.close(fig=self._figure)
 
     @override
     def _init_state(self):
         """Create and return a new environment state (used for initialization or reset)"""
 
+        # init environment space:
+        self._state_img = self._soil.copy()
+        assert self.env_space.contains(self._state_img)
+
         # init agent in a random position:
         idx = self.__get_random_non_overlapping_idx_position()
         pos = self.idx_to_coord(idx)
-        self._agent = Agent(pos)
+        self._agent = Agent(pos, head_direction=self._head_direction_mode)
+        self._state_img[idx] = self.agent_color
+        if self._head_direction_mode:
+            self._agent.head_direction = 90
 
         # init food items:
-        self._food_items = [
-            FoodItem(self.idx_to_coord(idx))
-            for idx in self.__get_random_non_overlapping_idx_position(
-                self._n_food_items,
-                {self.coord_to_idx(self._agent.pos)}
-            )
-        ]
+        self._food_items = []
+        for idx in self.__get_random_non_overlapping_idx_position(
+                    self._n_food_items,
+                    {self.coord_to_idx(self._agent.pos)}
+                ):
+            self._food_items.append(FoodItem(self.idx_to_coord(idx)))
+            self._state_img[idx] = self.food_color
+        self.__food_items_poses = {food.pos for food in self._food_items}
+        assert len(self._food_items) == len(self.__food_items_poses)
+        assert set(food.pos for food in self._food_items) == self.__food_items_poses
+        assert self._agent.pos not in self.__food_items_poses
 
         # self.debug_info['_init_state']
 
     def _update_state(self, action):
         """Update environment state. Compute and return reward."""
+        assert self.action_space.contains(action)
+
+        # update agent position:
+        action_on_map = None
+        if self._head_direction_mode:
+            assert self._agent.has_head_direction
+            if action == 0:  # rotate left
+                self._agent.head_direction = (self._agent.head_direction + self._head_rotation_angle) % 360
+            elif action == 1:  # go straight
+                action_on_map = {
+                    0: 2,
+                    90: 1,
+                    180: 0,
+                    270: 3,
+                }[self._agent.head_direction]
+            elif action == 2:  # rotate right
+                self._agent.head_direction = (self._agent.head_direction - self._head_rotation_angle) % 360
+            elif action == 3:  # none
+                pass
+        else:
+            action_on_map = action
+
+        if action_on_map is not None:
+            pos = self._agent.pos
+            if action_on_map == 0 and 0 <= pos.x - 1 < self.env_space.shape[1]:  # left
+                self._agent.pos = Pos(pos.x - 1, pos.y)
+            elif action_on_map == 1 and 0 <= pos.y + 1 < self.env_space.shape[0]:  # up
+                self._agent.pos = Pos(pos.x, pos.y + 1)
+            elif action_on_map == 2 and 0 <= pos.x + 1 < self.env_space.shape[1]:  # right
+                self._agent.pos = Pos(pos.x + 1, pos.y)
+            elif action_on_map == 3 and 0 <= pos.y - 1 < self.env_space.shape[0]:  # down
+                self._agent.pos = Pos(pos.x, pos.y - 1)
+            elif action_on_map == 4:  # none
+                pass
+            assert self.is_valid_position(self._agent.pos), (self._agent.pos, pos, self.env_space.shape)
+
+            # update _state_img: pos:
+            pre_idx = self.coord_to_idx(pos)
+            new_idx = self.coord_to_idx(self._agent.pos)
+            self._state_img[pre_idx] = self._soil[pre_idx]
+            self._state_img[new_idx] = self.agent_color
+
+            # food collected?
+            if self._agent.pos in self.__food_items_poses:
+                self.__food_items_poses.remove(self._agent.pos)
+                for i, food in enumerate(self._food_items):
+                    if food.pos == self._agent.pos:
+                        break
+                else:
+                    raise AssertionError('self._agent.pos in self.__food_items_poses but not in self._food_items')
+                self._food_items.pop(i)
+                assert len(self._food_items) == len(self.__food_items_poses)
+                print('Food collected')
+
+        # update _state_img: rotate:
+        # todo
+
+        # compute reward:
         reward = 0
+
         # self.debug_info['_update_state']
         return reward
 
@@ -229,7 +348,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
     def _is_done(self):
         self.debug_info['_is_done'] = {}
-        return True
+        return self.step_count >= 40 - 1
 
     def _get_info(self):
         """Get debugging info (the environment state, plus some extra useful information)."""
@@ -242,6 +361,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
             'current_step': self.step_count,
             'debug_info': self.debug_info,
         }
+        if self._head_direction_mode:
+            info['state']['agent_head_direction'] = self._agent.head_direction
         return info
 
     @staticmethod
