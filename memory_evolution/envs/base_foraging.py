@@ -7,10 +7,30 @@ from warnings import warn
 import gym
 from gym import spaces
 import matplotlib as mpl
+import matplotlib.colors as mcolors  # https://matplotlib.org/stable/gallery/color/named_colors.html
 import matplotlib.pyplot as plt
 import numpy as np
 
 from memory_evolution.utils import MustOverride, override
+
+
+# names of colors here: https://matplotlib.org/3.5.1/gallery/color/named_colors.html
+COLORS = {key: (np.asarray(col) * 255).astype(np.uint8)
+          for colors in (
+              mcolors.BASE_COLORS,
+              {k: mcolors.hex2color(col) for k, col in mcolors.TABLEAU_COLORS.items()},
+              {k: mcolors.hex2color(col) for k, col in mcolors.CSS4_COLORS.items()},
+          )
+          for key, col in colors.items()}
+assert all((isinstance(col, np.ndarray)
+           and col.dtype == np.uint8
+           and col.ndim == 1
+           and col.shape[0] == 3)
+           and all((0 <= c <= 255) for c in col)
+           for col in COLORS.values()), COLORS
+assert any(any((c == 255) for c in col)
+           for col in COLORS.values()), COLORS
+# print(COLORS)
 
 
 class Texture:
@@ -142,8 +162,6 @@ class BaseForagingEnv(gym.Env, MustOverride):
                  width: Optional[int] = None,  # if None => square maze
                  n_food_items: int = 3,
                  *,
-                 n_channels: int = 1,
-                 # color_reversed: bool = False,  # if False => white=255, black=0; if True => white=0, black=255;
                  seed=None,
                  head_direction: bool = True,
                  ) -> None:
@@ -155,11 +173,12 @@ class BaseForagingEnv(gym.Env, MustOverride):
             self._num_actions = 5  # left, up, right, down, none
         self._height = height
         self._width = height if width is None else width
-        self._n_channels = n_channels
+        self._n_channels = 3
         self._n_food_items = n_food_items
         self._seed = seed
-        self.agent_color = np.asarray([0])
-        self.food_color = np.asarray([0])
+        self.agent_color = COLORS['red']
+        self.food_color = COLORS['black']
+        self.background_color = COLORS['white']  # todo: do it with Texture
         # todo: background color(, borders color)
         self._figure, self._ax = plt.subplots()
         self.rendering_pause_interval = .1  # 1e-20
@@ -186,8 +205,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
                                     dtype=np.uint8,
                                     seed=self._seed)
 
-        self._soil = np.ones(self.env_space.shape, dtype=self.env_space.dtype) * 255
-        assert self.env_space.contains(self._soil)
+        bgd_col = np.asarray(self.background_color, dtype=np.uint8)
+        assert bgd_col.ndim == 1 and bgd_col.shape[0] == 3, bgd_col
+        self._soil = np.ones(self.env_space.shape, dtype=self.env_space.dtype) * bgd_col
+        assert self.env_space.contains(self._soil)  # note: check dtype!!
         # self.__observation = None  # todo
 
         self.__has_been_ever_reset = False
@@ -231,7 +252,12 @@ class BaseForagingEnv(gym.Env, MustOverride):
     def render(self, mode='human'):
         # print(self._state_img)
         self._ax.cla()
-        self._ax.matshow(self._state_img, cmap='gray')
+        if self._n_channels == 1:
+            self._ax.matshow(self._state_img, cmap='gray')
+        elif self._n_channels == 3:
+            self._ax.matshow(self._state_img)
+        else:
+            raise NotImplementedError
         plt.pause(self.rendering_pause_interval)
 
     def close(self):
@@ -270,6 +296,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
         # self.debug_info['_init_state']
 
+    @override
     def _update_state(self, action):
         """Update environment state. Compute and return reward."""
         assert self.action_space.contains(action)
@@ -298,12 +325,12 @@ class BaseForagingEnv(gym.Env, MustOverride):
             pos = self._agent.pos
             if action_on_map == 0 and 0 <= pos.x - 1 < self.env_space.shape[1]:  # left
                 self._agent.pos = Pos(pos.x - 1, pos.y)
-            elif action_on_map == 1 and 0 <= pos.y + 1 < self.env_space.shape[0]:  # up
-                self._agent.pos = Pos(pos.x, pos.y + 1)
+            elif action_on_map == 1 and 0 <= pos.y - 1 < self.env_space.shape[0]:  # up
+                self._agent.pos = Pos(pos.x, pos.y - 1)
             elif action_on_map == 2 and 0 <= pos.x + 1 < self.env_space.shape[1]:  # right
                 self._agent.pos = Pos(pos.x + 1, pos.y)
-            elif action_on_map == 3 and 0 <= pos.y - 1 < self.env_space.shape[0]:  # down
-                self._agent.pos = Pos(pos.x, pos.y - 1)
+            elif action_on_map == 3 and 0 <= pos.y + 1 < self.env_space.shape[0]:  # down
+                self._agent.pos = Pos(pos.x, pos.y + 1)
             elif action_on_map == 4:  # none
                 pass
             assert self.is_valid_position(self._agent.pos), (self._agent.pos, pos, self.env_space.shape)
@@ -335,6 +362,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # self.debug_info['_update_state']
         return reward
 
+    @override
     def _get_observation(self):  # todo: very costly; can be improved
         """create an observation from the environment state"""
         obs = self._soil.copy()
@@ -346,10 +374,12 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self.debug_info['_get_observation']['obs'] = obs
         return obs
 
+    @override
     def _is_done(self):
         self.debug_info['_is_done'] = {}
         return self.step_count >= 40 - 1
 
+    @override
     def _get_info(self):
         """Get debugging info (the environment state, plus some extra useful information)."""
         info = {
@@ -386,6 +416,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
             raise ValueError('The index `idx` should refer to 2D space with N channels, '
                              'thus 2D or 3D vector (channels are ignored).')
 
+    @override
     def is_valid_position(self, pos: Union[Pos, tuple[int]]) -> bool:
         """Returns True if pos is a valid position.
 

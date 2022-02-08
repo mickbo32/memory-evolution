@@ -19,7 +19,6 @@ if __name__ == '__main__':
     # env = gym.make('CartPole-v0')
     # env = BaseForagingEnv(3, 5, seed=2002)  # env = gym.make('CartPole-v0')
     env = BaseForagingEnv(3, 3, seed=2002, head_direction=False)  # env = gym.make('CartPole-v0')
-    # todo foods sovrapposti
     check_env(env)  # todo: move in tests
 
     # print(env.action_space)  # Discrete(4)
