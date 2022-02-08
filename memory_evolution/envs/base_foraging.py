@@ -7,30 +7,11 @@ from warnings import warn
 import gym
 from gym import spaces
 import matplotlib as mpl
-import matplotlib.colors as mcolors  # https://matplotlib.org/stable/gallery/color/named_colors.html
 import matplotlib.pyplot as plt
 import numpy as np
 
 from memory_evolution.utils import MustOverride, override
-
-
-# names of colors here: https://matplotlib.org/3.5.1/gallery/color/named_colors.html
-COLORS = {key: (np.asarray(col) * 255).astype(np.uint8)
-          for colors in (
-              mcolors.BASE_COLORS,
-              {k: mcolors.hex2color(col) for k, col in mcolors.TABLEAU_COLORS.items()},
-              {k: mcolors.hex2color(col) for k, col in mcolors.CSS4_COLORS.items()},
-          )
-          for key, col in colors.items()}
-assert all((isinstance(col, np.ndarray)
-           and col.dtype == np.uint8
-           and col.ndim == 1
-           and col.shape[0] == 3)
-           and all((0 <= c <= 255) for c in col)
-           for col in COLORS.values()), COLORS
-assert any(any((c == 255) for c in col)
-           for col in COLORS.values()), COLORS
-# print(COLORS)
+from memory_evolution.utils import COLORS, Pos
 
 
 class Texture:
@@ -42,67 +23,6 @@ class Texture:
     Applied positively to the floor and negatively to the borders or high-contrast objects.
     """
     pass
-
-
-class Pos:
-    """Coordinates of a Position.
-    `coords` coordinates should be all float
-    """
-
-    def __init__(self, *coords):
-        # if ndim <= 0:
-        #     raise ValueError('`ndim` must be positive.')
-        # if ndim != len(coords):
-        #     raise TypeError(f'`ndim`={ndim} coords are expected, {len(coords)} coords was given (as arguments)')
-        assert isinstance(coords, tuple)
-        if not all(isinstance(c, float) for c in coords):
-            raise TypeError('`coords` coordinates should be all float')
-        self._coords = tuple(coords)
-
-    @property
-    def ndim(self):
-        return len(self._coords)
-
-    def __len__(self):
-        return len(self._coords)
-
-    def __iter__(self):
-        return iter(self._coords)
-
-    def __getitem__(self, item):
-        return self._coords[item]
-
-    def __eq__(self, other):
-        if isinstance(other, Pos):
-            return self._coords == other._coords
-        return False
-
-    def __hash__(self):
-        return hash(self._coords)
-
-    @property
-    def x(self):
-        if self.ndim > 3 or self.ndim < 1:
-            raise AttributeError('When `ndim` is higher than 3 or less than 1, `x` attribute is not supported')
-        return self._coords[0]
-
-    @property
-    def y(self):
-        if self.ndim > 3 or self.ndim < 2:
-            raise AttributeError('When `ndim` is higher than 3 or less than 2, `y` attribute is not supported')
-        return self._coords[1]
-
-    @property
-    def z(self):
-        if self.ndim > 3 or self.ndim < 3:
-            raise AttributeError('When `ndim` is higher than 3 or less than 3, `z` attribute is not supported')
-        return self._coords[2]
-
-    def __repr__(self):
-        return (f"{type(self).__name__}("
-                + ", ".join([str(c) for c in self._coords]) + ")")
-        # return (f"{__name__ if __name__ != '__main__' else ''}.{type(self).__qualname__}("
-        #         + ", ".join([str(c) for c in self._coords]) + ")")
 
 
 class Agent:
@@ -162,8 +82,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
                  width: Optional[int] = None,  # if None => square maze
                  n_food_items: int = 3,
                  *,
-                 seed=None,
                  head_direction: bool = True,
+                 seed=None,
                  ) -> None:
         super().__init__()
 
@@ -176,10 +96,11 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._n_channels = 3
         self._n_food_items = n_food_items
         self._seed = seed
+
         self.agent_color = COLORS['red']
         self.food_color = COLORS['black']
         self.background_color = COLORS['white']  # todo: do it with Texture
-        # todo: background color(, borders color)
+
         self._figure, self._ax = plt.subplots()
         self.rendering_pause_interval = .1  # 1e-20
         self.debug_info = defaultdict(dict)
@@ -205,8 +126,12 @@ class BaseForagingEnv(gym.Env, MustOverride):
                                     dtype=np.uint8,
                                     seed=self._seed)
 
-        bgd_col = np.asarray(self.background_color, dtype=np.uint8)
-        assert bgd_col.ndim == 1 and bgd_col.shape[0] == 3, bgd_col
+        bgd_col = self.background_color
+        assert (isinstance(bgd_col, np.ndarray)
+                and bgd_col.dtype == np.uint8
+                and bgd_col.ndim == 1
+                and bgd_col.shape[0] == 3
+                and all((0 <= c <= 255) for c in bgd_col)), bgd_col
         self._soil = np.ones(self.env_space.shape, dtype=self.env_space.dtype) * bgd_col
         assert self.env_space.contains(self._soil)  # note: check dtype!!
         # self.__observation = None  # todo
@@ -266,7 +191,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         plt.close(fig=self._figure)
 
     @override
-    def _init_state(self):
+    def _init_state(self) -> None:
         """Create and return a new environment state (used for initialization or reset)"""
 
         # init environment space:
@@ -297,7 +222,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # self.debug_info['_init_state']
 
     @override
-    def _update_state(self, action):
+    def _update_state(self, action) -> Real:
         """Update environment state. Compute and return reward."""
         assert self.action_space.contains(action)
 
@@ -375,19 +300,24 @@ class BaseForagingEnv(gym.Env, MustOverride):
         return obs
 
     @override
-    def _is_done(self):
+    def _is_done(self) -> bool:
         self.debug_info['_is_done'] = {}
         return self.step_count >= 40 - 1
 
     @override
-    def _get_info(self):
-        """Get debugging info (the environment state, plus some extra useful information)."""
+    def _get_info(self) -> dict:
+        """Get debugging info (the environment state, plus some extra useful information).
+
+        Do not change values in the returned info-dict (undefined behaviour),
+        it is for read-only purpose.
+        """
         info = {
             'state': {
                 'env_shape': self.env_space.shape,
                 'agent_position': self._agent,
                 'food_items': self._food_items,
             },
+            'state_img': self._state_img,
             'current_step': self.step_count,
             'debug_info': self.debug_info,
         }
