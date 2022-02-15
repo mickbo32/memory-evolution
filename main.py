@@ -9,7 +9,7 @@ import pandas as pd
 
 from gym.utils.env_checker import check_env  # from stable_baselines.common.env_checker import check_env
 
-from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv
+from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze
 
 mpl.use('Qt5Agg')  # Change matplotlib backend to show correctly in PyCharm.
 
@@ -17,8 +17,10 @@ mpl.use('Qt5Agg')  # Change matplotlib backend to show correctly in PyCharm.
 if __name__ == '__main__':
 
     # env = gym.make('CartPole-v0')
-    # env = BaseForagingEnv(3, 5, seed=2002)  # env = gym.make('CartPole-v0')
-    env = BaseForagingEnv(3, 3, seed=2002, head_direction=False)  # env = gym.make('CartPole-v0')
+    # env = BaseForagingEnv(3, 5, seed=2022)
+    # env = BaseForagingEnv(3, 3, head_direction=False, seed=20202)
+    #env = TMaze(1, 3, 5, head_direction=False, seed=2022)
+    env = BaseForagingEnv(640, (1.5, 1.), fps=60, seed=42)
     check_env(env)  # todo: move in tests
 
     # print(env.action_space)  # Discrete(4)
@@ -28,6 +30,7 @@ if __name__ == '__main__':
     # print(env.observation_space.shape)  # (5, 5, 1)
     # print(env.observation_space.sample())  # [[[102] ... [203]]] / [[[243] ... [64]]] / each time different
 
+    print('Main loop')
     for i_episode in range(2):#20):
         observation = env.reset()
         t = 0
@@ -39,7 +42,7 @@ if __name__ == '__main__':
             assert env.step_count == t, (env.step_count, t)
             observation, reward, done, info = env.step(action)
             assert env.step_count == t + 1, (env.step_count, t)
-            print(info['state']['agent_position'])
+            print(info['state']['agent'])
             print(len(info['state']['food_items']), info['state']['food_items'])
             # pprint(info)
             if done:

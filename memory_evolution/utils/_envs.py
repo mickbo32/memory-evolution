@@ -10,6 +10,7 @@ import matplotlib as mpl
 import matplotlib.colors as mcolors  # https://matplotlib.org/stable/gallery/color/named_colors.html
 import matplotlib.pyplot as plt
 import numpy as np
+import pygame
 
 
 # names of colors here: https://matplotlib.org/3.5.1/gallery/color/named_colors.html
@@ -20,11 +21,13 @@ COLORS = {key: (np.asarray(col) * 255).astype(np.uint8)
               {k: mcolors.hex2color(col) for k, col in mcolors.CSS4_COLORS.items()},
           )
           for key, col in colors.items()}
-assert all((isinstance(col, np.ndarray)
-           and col.dtype == np.uint8
-           and col.ndim == 1
-           and col.shape[0] == 3)
-           and all((0 <= c <= 255) for c in col)
+def is_color(col):
+    return (isinstance(col, np.ndarray)
+            and col.dtype == np.uint8
+            and col.ndim == 1
+            and col.shape[0] == 3
+            and all((0 <= c <= 255) for c in col))
+assert all(is_color(col)
            for col in COLORS.values()), COLORS
 assert any(any((c == 255) for c in col)
            for col in COLORS.values()), COLORS
@@ -91,4 +94,13 @@ class Pos:
         # return (f"{__name__ if __name__ != '__main__' else ''}.{type(self).__qualname__}("
         #         + ", ".join([str(c) for c in self._coords]) + ")")
 
+
+def convert_image_to_pygame(image):
+    if isinstance(image, np.ndarray) and image.dtype == np.uint8:
+        return pygame.image.frombuffer(image.tobytes(), image.shape[1::-1], "RGB")
+    else:
+        raise NotImplementedError(f"{type(image)!r}"
+                                  + (f", dtype={image.dtype!r}"
+                                     if isinstance(image, np.ndarray)
+                                     else ''))
 
