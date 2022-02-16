@@ -1,8 +1,10 @@
 from collections import defaultdict, Counter
+from collections.abc import Sequence
 import math
 from numbers import Number, Real
 from typing import Optional, Union, Any
 from warnings import warn
+import sys
 
 import gym
 from gym import spaces
@@ -11,6 +13,9 @@ import matplotlib.colors as mcolors  # https://matplotlib.org/stable/gallery/col
 import matplotlib.pyplot as plt
 import numpy as np
 import pygame
+from shapely.affinity import rotate, scale, translate
+from shapely.geometry import Point, Polygon, LineString, MultiLineString
+from shapely.ops import unary_union
 
 
 # names of colors here: https://matplotlib.org/3.5.1/gallery/color/named_colors.html
@@ -103,4 +108,13 @@ def convert_image_to_pygame(image):
                                   + (f", dtype={image.dtype!r}"
                                      if isinstance(image, np.ndarray)
                                      else ''))
+
+
+def is_simple_polygon(polygon: Polygon):
+    return (
+        isinstance(polygon, Polygon)
+        and polygon.is_valid
+        and isinstance(polygon.boundary, LineString)  # not MultiLineString boundary
+        and not list(polygon.interiors)  # empty interiors, no holes
+    )
 

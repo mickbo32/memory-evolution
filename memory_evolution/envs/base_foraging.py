@@ -11,12 +11,13 @@ from gym import spaces
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.random import SeedSequence, default_rng
 import pygame
 from shapely.affinity import rotate, scale, translate
-from shapely.geometry import Point, Polygon, LineString
+from shapely.geometry import Point, Polygon, LineString, MultiLineString
 from shapely.ops import unary_union
 
-from memory_evolution.utils import COLORS, is_color, Pos, convert_image_to_pygame
+from memory_evolution.utils import COLORS, is_color, is_simple_polygon, Pos, convert_image_to_pygame
 from memory_evolution.utils import MustOverride, override
 
 
@@ -134,8 +135,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                  forward_step: float = .1,
                  agent_size: float = .1,
                  food_size: float = .1,
-                 min_border_width: float = .05,
-                 fps: int = 60,  # 60 or 30  # todo
+                 fps: Optional[int] = None,  # 60 or 30  # todo
                  seed=None,
                  ) -> None:
         """Inits environment
@@ -150,8 +150,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
             forward_step: amount of maximum forward motion per tick.
             agent_size: agent diameter.
             food_size: food item diameter.
-            min_border_width: positive number, minimum width of a border.
-            fps: frames per second.
+            fps: frames per second, if it is None it does the rendering as fast as possible.
             seed: seed for random generators.
         """
         super().__init__()
@@ -168,11 +167,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
                     and all(isinstance(x, int) for x in window_size))
                 ):
             raise TypeError(window_size)
-        if not isinstance(min_border_width, float):
-            raise TypeError(min_border_width)
 
         self._n_channels = 3
-        self._env_size = tuple(env_size) if isinstance(env_size, Sequence) else (env_size, env_size)
+        self._env_size = self._get_env_size(env_size)
         self._window_size = (tuple(window_size)
                              if isinstance(window_size, Sequence)
                              else (window_size, math.ceil(window_size * self._env_size[1] / self._env_size[0])))
@@ -184,9 +181,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._forward_step = forward_step
         self._agent_size = agent_size
         self._food_size = food_size
-        self._min_border_width = min_border_width
-        self._fps = fps
+        self._fps = 0 if fps is None else fps
         self._seed = seed
+        self._seedsequence = SeedSequence(self._seed)
 
         self.agent_color = COLORS['red']
         self.food_color = COLORS['black']
@@ -195,7 +192,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._platform = Polygon((Point(0, 0), Point(0, self._env_size[1]),
                                   Point(*self._env_size), Point(self._env_size[0], 0)))
         # self._borders = []
-        self._main_border = self._platform.boundary
+        assert is_simple_polygon(self._platform), (self._platform.wkt, self._platform.boundary)
+        self._main_border = self._platform.boundary  # self._main_border_line v.s. self._main_border->.buffer(.05 * self._env_size[0])
         self._fpsClock = pygame.time.Clock()
         self.debug_info = defaultdict(dict)
 
@@ -206,18 +204,28 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self.__food_items_union = None
         self._env_img = None  # todo: make state (env_state) an object
 
+        # # sq = SeedSequence(self._seed)
+        # # seed = sq.spawn(1)[0]
+        # # rng = default_rng(seed)
+        # # [rng.random(3) for rng in [default_rng(s) for s in sq.spawn(3)]] v.s. [rng.random(3) for rng in [default_rng(s.entropy) for s in sq.spawn(3)]]
+        # sq = SeedSequence(self._seed)
+        # seeds = sq.generate_state(3)
+        # sq = sq.spawn(1)[0]
+        seeds = self._seedsequence.generate_state(3)  # default_rng() can be created with _seedsequence directly, spaces not.
+        seeds = [int(s) for s in seeds]  # spaces want int.
+        self._seedsequence = self._seedsequence.spawn(1)[0]  # update _seedsequence for new seeds next time you ask a seed.
         self.action_space = spaces.Box(low=np.asarray([-1., 0.], dtype=np.float32),
                                        high=np.asarray([1., 1.], dtype=np.float32),
                                        dtype=np.float32,
-                                       seed=self._seed)  # [rotation, forward motion]
+                                       seed=seeds[0])  # [rotation, forward motion]
         self.observation_space = spaces.Box(low=0, high=255,
                                             shape=(10, 10, 1),
                                             dtype=np.uint8,
-                                            seed=self._seed)
+                                            seed=seeds[1])
         self.env_space = spaces.Box(low=0, high=255,
                                     shape=self._env_img_shape,
                                     dtype=np.uint8,
-                                    seed=self._seed)
+                                    seed=seeds[2])
 
         bgd_col = self.background_color
         assert is_color(bgd_col), bgd_col
@@ -239,6 +247,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
         # Other control variables:
         self.__has_been_ever_reset = False
+
+    @staticmethod
+    def _get_env_size(env_size):
+        return tuple(env_size) if isinstance(env_size, Sequence) else (env_size, env_size)
 
     def step(self, action) -> tuple[np.ndarray, Real, bool, dict]:
         print('Step')
@@ -285,11 +297,11 @@ class BaseForagingEnv(gym.Env, MustOverride):
         print('Rendering')
         if self._rendering is False:
             self._rendering = True
-
             # init pygame module:
             pygame.init()
 
         self._rendering_reset_request = True  # todo: update instead of rewriting each time
+        # reset screen if asked:
         if self._rendering_reset_request:
             self._rendering_reset_request = False
             # init rendering engine:
@@ -301,19 +313,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
             self._screen = pygame.display.set_mode(self._window_size)
             self._screen.blit(self._background_img, (0, 0))
 
-        # draw agent:
-        # todo: use Sprites and update the position without rewriting all the screen again
-        pygame.draw.circle(self._screen,
-                           self.agent_color,
-                           np.asarray(self._agent.pos.coords[0]) * self._env2win_resize_factor,
-                           self._agent.radius * self._env2win_resize_factor)
-
-        # draw food items:
-        for food in self._food_items:
-            pygame.draw.circle(self._screen,
-                               self.food_color,
-                               np.asarray(food.pos.coords[0]) * self._env2win_resize_factor,
-                               food.radius * self._env2win_resize_factor)
+        self._draw_env(self._screen)
 
         # flip/update the screen:
         pygame.display.flip()  # pygame.display.update()
@@ -325,7 +325,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         print(dt)
         # pygame Clock tick is built for efficiency, not for precision,
         # thus take in account some dt error in the assertion.
-        assert dt >= 1000 / self._fps * .99 - 1, (dt, 1000 / self._fps * .99 - 1, self._fps)
+        assert self._fps == 0 or dt >= 1000 / self._fps * .99 - 1, (dt, 1000 / self._fps * .99 - 1, self._fps)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -337,7 +337,57 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # pygame.display.quit()
         pygame.quit()
 
-    def _check_quit_and_quit(self):
+    def _get_point_env2win(self, point: Union[Point, np.ndarray, tuple], window_size=None, env_size=None
+                           ) -> Union[Point, np.ndarray, tuple]:
+        """Take a point in the environment coordinate system
+        and transform it in the window coordinate system.
+
+        If window_size or env_size is not provided (or None) it uses the one
+        of the self object, otherwise it uses the one provided.
+        In the second case, if self._window_size or self._env_size or is not set raises an error."""
+        if window_size is None:
+            if getattr(self, "_window_size", None) is None:
+                raise ValueError(
+                    "If window_size is not provided (or None) it uses the one "
+                    "of the self object, in this case self._window_size should "
+                    "be set, otherwise it is raised an error.")
+            window_size = self._window_size
+        if env_size is None:
+            if getattr(self, "_env_size", None) is None:
+                raise ValueError(
+                    "If env_size is not provided (or None) it uses the one "
+                    "of the self object, in this case self._env_size should "
+                    "be set, otherwise it is raised an error.")
+            env_size = self._env_size
+        env2win_resize_factor = window_size[0] / env_size[0]
+        msg_2d_error = 'Only 2D points implemented'
+        msg_point_outside_env_error = 'point not in the environment (outside env_size)'
+        if isinstance(point, Point):
+            if point.has_z:
+                raise NotImplementedError(msg_2d_error)
+            if not (0 <= point.x <= env_size[0] and 0 <= point.y <= env_size[1]):
+                raise ValueError(msg_point_outside_env_error)
+            point = Point(point.x * env2win_resize_factor,
+                          (env_size[1] - point.y) * env2win_resize_factor)
+        elif isinstance(point, np.ndarray):
+            if point.ndim != 2:
+                raise NotImplementedError(msg_2d_error)
+            if not (0 <= point[0] <= env_size[0] and 0 <= point[1] <= env_size[1]):
+                raise ValueError(msg_point_outside_env_error)
+            point[1] = env_size[1] - point[1]
+            point = point * env2win_resize_factor
+        elif isinstance(point, tuple):
+            if len(point) != 2:
+                raise NotImplementedError(msg_2d_error)
+            if not (0 <= point[0] <= env_size[0] and 0 <= point[1] <= env_size[1]):
+                raise ValueError(msg_point_outside_env_error)
+            point = (point[0] * env2win_resize_factor,
+                     (env_size[1] - point[1]) * env2win_resize_factor)
+        else:
+            raise NotImplementedError(f"point type not supported: {type(point)}")
+        return point
+
+    def _check_quit_and_quit(self) -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 warn("Program manually closed. Quitting...")
@@ -345,14 +395,35 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 sys.exit()
 
     @override
+    def _draw_env(self, screen) -> None:
+        """Draw the environment in the screen.
+
+        Note: to override the background update the attribute
+        ``self._background`` (np.ndarray) and ``self._background_img``
+        (pygame image) in self.__init__()"""
+
+        # draw food items:
+        for food in self._food_items:
+            pygame.draw.circle(screen,
+                               self.food_color,
+                               self._get_point_env2win(food.pos.coords[0]),
+                               food.radius * self._env2win_resize_factor)
+
+        # draw agent:
+        # todo: use Sprites and update the position without rewriting all the screen again
+        pygame.draw.circle(screen,
+                           self.agent_color,
+                           self._get_point_env2win(self._agent.pos.coords[0]),
+                           self._agent.radius * self._env2win_resize_factor)
+
+    @override
     def _init_state(self) -> None:
         """Create and return a new environment state (used for initialization or reset)"""
 
         # init environment space:
         # pass
-        # self._env_img = self._soil.copy()  # todo: togli
-        # assert self.env_space.contains(self._env_img)  # todo: togli
 
+        # get random init positions:
         positions = self._get_random_non_overlapping_positions(
             1 + self._n_food_items,
             [self._food_size / 2] * self._n_food_items + [self._agent_size / 2])
@@ -413,7 +484,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # pos_buff = pos.buffer(self._agent.radius)
         # # fixme: prendi in considerazione anche il rettangolo di spostamneto per la collision
         # if not self.is_valid_position(pos_buff):
-        #     collision = pos_buff.intersection(self._platform.exterior)
+        #     collision = pos_buff.intersection(self._platform.exterior)  # fixme: exterior is the exterior ring, not exterior area!!
         #     agent_pos_dist = collision.distance(self._agent.pos)  # fixme: questa non è la vera distanza di collisione
         #     # fixme: distanza di collisione dovrebbe essere parallela alla direzione dello spostamento
         #     #        (puoi fare questo con una trasformazione, e poi il calcolo della distanza, ma è complesso,
@@ -482,7 +553,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 if prev_step == forward_step:
                     valid = True
                 else:
-                    dist = pos.buffer(self._agent.radius).distance(self._platform.exterior)
+                    dist = pos.buffer(self._agent.radius).distance(self._platform.boundary)
                     # print(f'valid, using bisection (i={i})', forward_step, dist)
                     if dist <= agent_negligible_movement_pct * self._agent.size:
                         valid = True
@@ -567,7 +638,6 @@ class BaseForagingEnv(gym.Env, MustOverride):
         """
         info = {
             'state': {
-                'env_shape': self.env_space.shape,
                 'agent': self._agent,
                 'food_items': self._food_items,
             },
@@ -579,11 +649,11 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 'forward_step': self._forward_step,
                 'agent_size': self._agent_size,
                 'food_size': self._food_size,
-                'min_border_width': self._min_border_width,
                 'fps': self._fps,
                 'seed': self._seed,
             },
-            'env_state_img': self._env_img,
+            # 'env_shape': self.env_space.shape,
+            # 'env_state_img': self._env_img,
             'current_step': self.step_count,
             'debug_info': self.debug_info,
         }
@@ -610,7 +680,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
             raise TypeError('`pos` should be an instance of Point or Polygon')
         if pos.has_z:
             raise ValueError('`pos` should be 2D (and without channels)')
-        return self._platform.contains(pos)  # and unary_union(self._borders).disjoint(pos)
+        return self._platform.contains(pos)
 
     def _get_random_non_overlapping_positions(self,
                                               n,
@@ -627,7 +697,12 @@ class BaseForagingEnv(gym.Env, MustOverride):
         poses = []
         while len(poses) < n:
             assert 2 == len(self._env_size), self._env_size
-            pos = Point(self.env_space.np_random.random_sample(len(self._env_size)) * self._env_size)
+            choice_size = np.asarray(self._env_size)
+            choice_size -= radius[len(poses)] * 2
+            pos = Point(
+                (self.env_space.np_random.random_sample(len(self._env_size))
+                 * choice_size) + radius[len(poses)]
+            )
             pos_buff = pos.buffer(radius[len(poses)])
             if unary_union(overlapping).disjoint(pos_buff) and self.is_valid_position(pos_buff):
                 overlapping.append(pos_buff)

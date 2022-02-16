@@ -17,10 +17,10 @@ mpl.use('Qt5Agg')  # Change matplotlib backend to show correctly in PyCharm.
 if __name__ == '__main__':
 
     # env = gym.make('CartPole-v0')
-    # env = BaseForagingEnv(3, 5, seed=2022)
-    # env = BaseForagingEnv(3, 3, head_direction=False, seed=20202)
-    #env = TMaze(1, 3, 5, head_direction=False, seed=2022)
-    env = BaseForagingEnv(640, (1.5, 1.), fps=60, seed=42)
+    # env = BaseForagingEnv(640, (1.5, 1.), fps=None, seed=42)
+    # env = BaseForagingEnv(640, (1.5, 1.), agent_size=.5, food_size=.3, fps=None, seed=42)
+    env = TMaze(env_size=(1.5, 1.), fps=None, seed=42)
+    # env = TMaze(.1001, env_size=(1.5, 1.), fps=None, seed=42)
     check_env(env)  # todo: move in tests
 
     # print(env.action_space)  # Discrete(4)
