@@ -14,11 +14,17 @@ import numpy as np
 from numpy.random import SeedSequence, default_rng
 import pygame
 from shapely.affinity import rotate, scale, translate
-from shapely.geometry import Point, Polygon, LineString, MultiLineString
-from shapely.ops import unary_union
+from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiPolygon
+from shapely.ops import unary_union, triangulate
 
-from memory_evolution.utils import COLORS, is_color, is_simple_polygon, Pos, convert_image_to_pygame
+from memory_evolution.utils import (
+    COLORS, convert_image_to_pygame, is_color, is_simple_polygon, is_triangle,
+    Pos, triangulate_nonconvex_polygon,
+)
 from memory_evolution.utils import MustOverride, override
+
+# DEBUG:
+import geopandas as gpd
 
 
 class Texture:
@@ -136,7 +142,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                  agent_size: float = .1,
                  food_size: float = .1,
                  fps: Optional[int] = None,  # 60 or 30  # todo
-                 seed=None,
+                 seed=None,  # todo: int or SeedSequence
                  ) -> None:
         """Inits environment
 
@@ -193,7 +199,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                                   Point(*self._env_size), Point(self._env_size[0], 0)))
         # self._borders = []
         assert is_simple_polygon(self._platform), (self._platform.wkt, self._platform.boundary)
-        self._main_border = self._platform.boundary  # self._main_border_line v.s. self._main_border->.buffer(.05 * self._env_size[0])
+        self._main_border = self._platform.boundary  # self._main_border_line v.s. self._main_border->.buffer(.05 * self._env_size[0], single_sided=True)
         self._fpsClock = pygame.time.Clock()
         self.debug_info = defaultdict(dict)
 
@@ -204,13 +210,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self.__food_items_union = None
         self._env_img = None  # todo: make state (env_state) an object
 
-        # # sq = SeedSequence(self._seed)
-        # # seed = sq.spawn(1)[0]
-        # # rng = default_rng(seed)
-        # # [rng.random(3) for rng in [default_rng(s) for s in sq.spawn(3)]] v.s. [rng.random(3) for rng in [default_rng(s.entropy) for s in sq.spawn(3)]]
         # sq = SeedSequence(self._seed)
-        # seeds = sq.generate_state(3)
-        # sq = sq.spawn(1)[0]
+        # seed = sq.spawn(1)[0]
+        # rng = default_rng(seed)
+        # [rng.random(3) for rng in [default_rng(s) for s in sq.spawn(3)]] v.s. [rng.random(3) for rng in [default_rng(s.entropy) for s in sq.spawn(3)]]
         seeds = self._seedsequence.generate_state(3)  # default_rng() can be created with _seedsequence directly, spaces not.
         seeds = [int(s) for s in seeds]  # spaces want int.
         self._seedsequence = self._seedsequence.spawn(1)[0]  # update _seedsequence for new seeds next time you ask a seed.
@@ -546,7 +549,6 @@ class BaseForagingEnv(gym.Env, MustOverride):
             mov_line = LineString((self._agent.pos, pos))
             movement_buff = unary_union((agent_buff,
                                          mov_line.buffer(self._agent.radius),
-                                         mov_line.buffer(-self._agent.radius),
                                          pos.buffer(self._agent.radius)))
             if self.is_valid_position(movement_buff):
                 assert prev_step > 0 and prev_step >= forward_step
@@ -582,7 +584,6 @@ class BaseForagingEnv(gym.Env, MustOverride):
             mov_line = LineString((self._agent.pos, pos))
             movement_buff = unary_union((agent_buff,
                                          mov_line.buffer(self._agent.radius),
-                                         mov_line.buffer(-self._agent.radius),
                                          pos.buffer(self._agent.radius)))
             assert self.is_valid_position(movement_buff), (pos.wkt, self._agent.radius)
         self._agent.pos = pos
@@ -663,8 +664,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
     def is_valid_position(self, pos: Union[Point, Polygon]) -> bool:
         """Returns True if pos is in a valid position.
 
-        Note: Under the hood it uses ``contains()`` which it means if a point
-        is on the border (e.g. Point(0, 0)) is considered invalid, but a
+        Note: Under the hood it uses ``covers()`` which it means if a point
+        is on the border (e.g. Point(0, 0)) is considered valid as well as a
         polygon lying on the border is valid (e.g. Polygon((Point(0, 0),
         Point(0, 0.01), Point(0.01, 0.01), Point(0.01,0)))).
 
@@ -674,39 +675,149 @@ class BaseForagingEnv(gym.Env, MustOverride):
         Returns:
             True if pos is in a valid position.
         """
+        """
+        Note: Under the hood it uses ``contains()`` which it means if a point
+        is on the border (e.g. Point(0, 0)) is considered invalid, but a
+        polygon lying on the border is valid (e.g. Polygon((Point(0, 0),
+        Point(0, 0.01), Point(0.01, 0.01), Point(0.01,0)))).
+        Note: Under the hood it uses ``covers()`` which it means if a point
+        is on the border (e.g. Point(0, 0)) is considered valid as well as a
+        polygon lying on the border is valid (e.g. Polygon((Point(0, 0),
+        Point(0, 0.01), Point(0.01, 0.01), Point(0.01,0)))).
+        
+        plg = Polygon((Point(0, 0), Point(0, 1), Point(1, 1), Point(1, 0)))
+        plg.contains(Point(0, 0))
+        Out[3]: False
+        plg.covers(Point(0, 0))
+        Out[4]: True
+        plg.intersects(Point(0, 0))
+        Out[9]: True
+        plg.covers(Point(0, .11))
+        Out[19]: True
+        plg.contains(Point(0, .11))
+        Out[21]: False
+        
+        plg2 = Polygon(((0, 0), (0, 0.01), (0.01, 0.01), (0.01,0)))
+        plg.contains(plg2)
+        Out[12]: True
+        plg.covers(plg2)
+        Out[13]: True
+        plg.intersects(plg2)
+        Out[14]: True
+        """
         assert type(Point(0, 0).buffer(1)) is Polygon, type(Point(0, 0).buffer(1))  # todo: move in tests
         # convert pos to index if it is not already:
         if not isinstance(pos, (Point, Polygon)):
             raise TypeError('`pos` should be an instance of Point or Polygon')
         if pos.has_z:
             raise ValueError('`pos` should be 2D (and without channels)')
-        return self._platform.contains(pos)
+        return self._platform.covers(pos)
 
     def _get_random_non_overlapping_positions(self,
                                               n,
                                               radius: Union[list, int],
-                                              overlapping: list = None,  # set = None
+                                              platform=None,
                                               ) -> list:
-        if overlapping is None:
-            overlapping = list()  # set()
         if isinstance(radius, int):
             radius = [radius] * n
         if n != len(radius):
             raise ValueError(f"`radius` should be int or a list of `n` integers, "
                              f"instead has {len(radius)} elements.")
+        assert 2 == len(self._env_size), self._env_size
+
+        # more efficient and always ending version:  # todo: test it with polygons with holes
+
+        epsilon = max(np.finfo(np.float32).resolution * (3 * 10), .0001)
+        init_platform = self._platform if platform is None else platform
+        rs = self.env_space.np_random  # RandomState object
+
         poses = []
-        while len(poses) < n:
-            assert 2 == len(self._env_size), self._env_size
-            choice_size = np.asarray(self._env_size)
-            choice_size -= radius[len(poses)] * 2
-            pos = Point(
-                (self.env_space.np_random.random_sample(len(self._env_size))
-                 * choice_size) + radius[len(poses)]
-            )
-            pos_buff = pos.buffer(radius[len(poses)])
-            if unary_union(overlapping).disjoint(pos_buff) and self.is_valid_position(pos_buff):
-                overlapping.append(pos_buff)
-                poses.append(pos)
+        # chosen = []  # polygons already positioned
+        chosen = unary_union([])  # polygons already positioned
+        for i, r in enumerate(radius):
+
+            # select the platform and take only the available parts:
+            platform = init_platform.difference(chosen)  # unary_union(chosen))
+
+            # reduce the platform by the radius of the new object (it could be Polygon or MultiPolygon):
+            platform = platform.buffer(-r)  # - epsilon * r)
+            assert isinstance(platform, (Polygon, MultiPolygon)), type(platform)
+            # print(platform.boundary.wkt)
+            # print(f" platform_area_remained={platform.area}")
+            if platform.is_empty:
+                raise RuntimeError("There is not enough space to fit all the figures in the environment.")
+
+            # divide the platform in triangles:
+            triangles = triangulate_nonconvex_polygon(platform)
+            # print('Triangles:\n\t' + '\n\t'.join(tr.wkt for tr in triangles))
+
+            # choose randomly a triangle proportionally to its area:
+            probs = np.asarray([tr.area for tr in triangles])
+            probs /= probs.sum(None)
+            tr = rs.choice(triangles, p=probs)
+
+            # pick a random point in this triangle:
+            pt = self._get_random_point_in_triangle(tr, rs)
+
+            # create object, update poses and chosen:
+            pt_buff = pt.buffer(r)  # + epsilon * r)
+            poses.append(pt)
+            chosen = chosen.union(pt_buff)  # chosen.append(pt_buff)
+
         assert n == len(poses) == len(radius)
+        fig, ax = plt.subplots()
+        gpd.GeoSeries(init_platform.boundary).plot(ax=ax, color='k')
+        gpd.GeoSeries(platform.buffer(0)).plot(ax=ax, color='b')
+        gpd.GeoSeries([tr.boundary for tr in triangles]).plot(ax=ax, color='gray')
+        gpd.GeoSeries([Point(p) for p in poses]).plot(ax=ax, color='r')
+        plt.show()
+        assert all(self.is_valid_position(pos.buffer(r)) for pos, r in zip(poses, radius)), (
+            [p.wkt for p, r in zip(poses, radius) if not self.is_valid_position(p.buffer(r))],
+            [p.wkt for p in poses])
         return poses
+
+    @staticmethod
+    def _get_random_point_in_triangle(triangle, random_state) -> Point:
+
+        epsilon = np.finfo(np.float32).resolution * (3 * 10)
+
+        if not isinstance(random_state, np.random.RandomState):
+            raise TypeError("'random_state' is not a np.random.RandomState object")
+        if not isinstance(triangle, Polygon):
+            raise TypeError("'triangle' is not a Polygon object")
+        if not is_triangle(triangle):
+            raise ValueError("'triangle' is not a triangle")
+        if triangle.has_z:
+            raise ValueError("only 2D is implemented")
+
+        # translate triangle to origin, get a and b vectors or the space:
+        coords = np.asarray(triangle.boundary.coords)
+        assert 4 == len(coords), coords
+        assert np.array_equal(coords[0], coords[-1]), coords
+        orig = coords[0].copy()
+        coords -= orig
+        assert np.array_equal(coords[0], (0, 0)), coords
+        a = coords[1]
+        b = coords[2]
+
+        # generate random point in the space parallelogram:
+        # uniform [0, 1)  # [0,1] would be better, but anyway changed for floating point precision errors, so no problem
+        u1, u2 = random_state.random_sample(2)  # * (1 - epsilon * 2) + epsilon
+
+        # if point outside triangle (2nd half of parallelogram) map in the triangle (1st half of parallelogram):
+        if u1 + u2 > 1:
+            u1 = 1 - u1
+            u2 = 1 - u2
+
+        # linear combination of a and b:
+        pnt = u1 * a + u2 * b
+
+        # translate back to original position:
+        pnt += orig
+
+        pnt = Point(pnt)
+        # Note: take in account floating point precision errors -> epsilon
+        assert triangle.intersects(pnt), (pnt.wkt, triangle.boundary.coords[:])
+        # print(pnt)
+        return pnt
 

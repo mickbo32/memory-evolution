@@ -11,10 +11,11 @@ from gym import spaces
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.random import SeedSequence, default_rng
 import pygame
 from shapely.affinity import rotate, scale, translate
-from shapely.geometry import Point, Polygon, LineString, MultiLineString
-from shapely.ops import unary_union
+from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiPolygon
+from shapely.ops import unary_union, triangulate
 
 from memory_evolution.utils import COLORS, is_color, is_simple_polygon, Pos, convert_image_to_pygame
 from memory_evolution.utils import MustOverride, override
@@ -25,14 +26,14 @@ from .maze_foraging import MazeForagingEnv, Agent, FoodItem
 class TMaze(MazeForagingEnv):
 
     def __init__(self,
-                 corridor_width: Real = .3,
+                 corridor_width: Real = .2,
                  window_size: Union[int, Sequence[int]] = 640,  # (640, 480),
                  env_size: Union[float, Sequence[float]] = 1.,
                  n_food_items: int = 3,
                  rotation_step: float = 90,
-                 forward_step: float = .1,
-                 agent_size: float = .1,
-                 food_size: float = .1,
+                 forward_step: float = .05,
+                 agent_size: float = .05,
+                 food_size: float = .05,
                  fps: Optional[int] = None,
                  seed=None,
                  ) -> None:
@@ -75,6 +76,6 @@ class TMaze(MazeForagingEnv):
             seed=seed,
         )
 
-        assert env_size == self._env_size
+        assert tuple(up_right) == self._env_size
         assert n_channels == self._n_channels, self._n_channels
 

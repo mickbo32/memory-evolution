@@ -11,10 +11,11 @@ from gym import spaces
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.random import SeedSequence, default_rng
 import pygame
 from shapely.affinity import rotate, scale, translate
-from shapely.geometry import Point, Polygon, LineString, MultiLineString
-from shapely.ops import unary_union
+from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiPolygon
+from shapely.ops import unary_union, triangulate
 
 from memory_evolution.utils import COLORS, is_color, is_simple_polygon, Pos, convert_image_to_pygame
 from memory_evolution.utils import MustOverride, override
@@ -62,7 +63,7 @@ class MazeForagingEnv(BaseForagingEnv):
 
         self.border_color = COLORS['black']
         self._borders = borders
-        self.__borders_coords_on_screen = [[self._get_point_env2win(pt) for pt in plg.boundary.coords[:]]
+        self.__borders_coords_on_screen = [[self._get_point_env2win(pt) for pt in plg.boundary.coords]
                                            for plg in self._borders]
         for plg in self.__borders_coords_on_screen:
             plg = Polygon(plg)
