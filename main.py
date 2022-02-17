@@ -45,6 +45,7 @@ if __name__ == '__main__':
             assert env.step_count == t, (env.step_count, t)
             observation, reward, done, info = env.step(action)
             assert env.step_count == t + 1, (env.step_count, t)
+            print(observation)
             print(info['state']['agent'])
             print(len(info['state']['food_items']), info['state']['food_items'])
             # pprint(info)

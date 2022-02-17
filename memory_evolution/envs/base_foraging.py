@@ -137,10 +137,13 @@ class BaseForagingEnv(gym.Env, MustOverride):
                  window_size: Union[int, Sequence[int]] = 640,  # (640, 480),
                  env_size: Union[float, Sequence[float]] = 1.,
                  n_food_items: int = 3,
-                 rotation_step: float = 90,
-                 forward_step: float = .1,
-                 agent_size: float = .1,
-                 food_size: float = .1,
+                 rotation_step: float = 20.,
+                 forward_step: float = .01,
+                 agent_size: float = .05,
+                 food_size: float = .05,
+                 vision_depth: float = .15,
+                 vision_field_angle: float = 180.,
+                 vision_resolution: int = 10,
                  fps: Optional[int] = None,  # 60 or 30  # todo
                  seed=None,  # todo: int or SeedSequence
                  ) -> None:
@@ -156,6 +159,11 @@ class BaseForagingEnv(gym.Env, MustOverride):
             forward_step: amount of maximum forward motion per tick.
             agent_size: agent diameter.
             food_size: food item diameter.
+            vision_depth: depth of the sight of the agent.
+            vision_field_angle: angle of the full field of view of the agent.
+            vision_resolution: how many sample to take for each line and how many lines to take,
+                               i.e. an array ``vision_resolution * vision_resolution`` is provided as
+                               observation.
             fps: frames per second, if it is None it does the rendering as fast as possible.
             seed: seed for random generators.
         """
@@ -187,6 +195,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._forward_step = forward_step
         self._agent_size = agent_size
         self._food_size = food_size
+        self._vision_depth = vision_depth
+        self._vision_field_angle = vision_field_angle
+        self._vision_resolution = vision_resolution
         self._fps = 0 if fps is None else fps
         self._seed = seed
         self._seedsequence = SeedSequence(self._seed)
@@ -222,7 +233,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                                        dtype=np.float32,
                                        seed=seeds[0])  # [rotation, forward motion]
         self.observation_space = spaces.Box(low=0, high=255,
-                                            shape=(10, 10, 1),
+                                            shape=(self._vision_resolution, self._vision_resolution, 1),
                                             dtype=np.uint8,
                                             seed=seeds[1])
         self.env_space = spaces.Box(low=0, high=255,
@@ -418,6 +429,14 @@ class BaseForagingEnv(gym.Env, MustOverride):
                            self.agent_color,
                            self._get_point_env2win(self._agent.pos.coords[0]),
                            self._agent.radius * self._env2win_resize_factor)
+
+        # draw field of view of the agent:
+        points = self._get_observation_points()
+        for pt in points:
+            if Polygon(self._main_border).covers(Point(pt)):
+                pt = self._get_point_env2win(pt)
+                r = max(self._env2win_resize_factor * min(self._env_size) * .005, 1)
+                pygame.draw.circle(screen, COLORS['blue'], pt, r)
 
     @override
     def _init_state(self) -> None:
@@ -619,11 +638,52 @@ class BaseForagingEnv(gym.Env, MustOverride):
         return reward
 
     @override
-    def _get_observation(self):  # todo: very costly; can be improved
+    def _get_observation(self): # todo
         """create an observation from the environment state"""
-        obs = self.observation_space.sample()
+        # todo
+        points = self._get_observation_points()
+        obs = []
+        for pt in points:
+            pt = Point(pt)
+            if self.__food_items_union.covers(pt):
+                obs.append(self.food_color)
+            elif self._platform.covers(pt):
+                obs.append(self.background_color)
+            else:
+                # borders  # todo assert
+                obs.append(COLORS['black'])
+
+        def black_n_white(x: np.ndarray):
+            return x.sum(None) / sum(x.shape)
+            # np.sum: dtype: if a is unsigned then an unsigned integer
+            #         of the same precision as the platform integer is used.
+        obs = list(map(black_n_white, obs))
+        obs = np.asarray(obs, dtype=self.observation_space.dtype).reshape(self.observation_space.shape)
         self.debug_info['_get_observation']['obs'] = obs
         return obs
+
+    def _get_observation_points(self) -> list[tuple[float]]:
+        line = LineString((self._agent.pos,
+                           (self._agent.pos.x + self._vision_depth,
+                            self._agent.pos.y)))
+        span = np.linspace(0., 1., num=self._vision_resolution)
+        assert span[-1] == 1., f'{span[-1]:.30f}'
+        points_on_line = []
+        for s in span:
+            p = line.interpolate(s, normalized=True)
+            pt = Point(p.x, self._agent.pos.y)
+            points_on_line.append(pt)
+        line = LineString(points_on_line)
+
+        angles = np.linspace(self._agent.head_direction + self._vision_field_angle / 2,
+                             self._agent.head_direction - self._vision_field_angle / 2,
+                             num=self._vision_resolution)
+        points = []
+        for alpha in angles:
+            points.extend(rotate(line, alpha, self._agent.pos).coords)
+        assert len(points) == self._vision_resolution ** 2, len(points)
+
+        return points
 
     @override
     def _is_done(self) -> bool:
@@ -650,6 +710,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 'forward_step': self._forward_step,
                 'agent_size': self._agent_size,
                 'food_size': self._food_size,
+                'vision_depth': self._vision_depth,
+                'vision_field_angle': self._vision_field_angle,
+                'vision_resolution': self._vision_resolution,
                 'fps': self._fps,
                 'seed': self._seed,
             },
@@ -765,12 +828,13 @@ class BaseForagingEnv(gym.Env, MustOverride):
             chosen = chosen.union(pt_buff)  # chosen.append(pt_buff)
 
         assert n == len(poses) == len(radius)
-        fig, ax = plt.subplots()
-        gpd.GeoSeries(init_platform.boundary).plot(ax=ax, color='k')
-        gpd.GeoSeries(platform.buffer(0)).plot(ax=ax, color='b')
-        gpd.GeoSeries([tr.boundary for tr in triangles]).plot(ax=ax, color='gray')
-        gpd.GeoSeries([Point(p) for p in poses]).plot(ax=ax, color='r')
-        plt.show()
+        # # plotting during debug:
+        # fig, ax = plt.subplots()
+        # gpd.GeoSeries(init_platform.boundary).plot(ax=ax, color='k')
+        # gpd.GeoSeries(platform.buffer(0)).plot(ax=ax, color='b')
+        # gpd.GeoSeries([tr.boundary for tr in triangles]).plot(ax=ax, color='gray')
+        # gpd.GeoSeries([Point(p) for p in poses]).plot(ax=ax, color='r')
+        # plt.show()
         assert all(self.is_valid_position(pos.buffer(r)) for pos, r in zip(poses, radius)), (
             [p.wkt for p, r in zip(poses, radius) if not self.is_valid_position(p.buffer(r))],
             [p.wkt for p in poses])

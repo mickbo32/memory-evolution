@@ -30,10 +30,13 @@ class MazeForagingEnv(BaseForagingEnv):
                  window_size: Union[int, Sequence[int]] = 640,  # (640, 480),
                  env_size: Union[float, Sequence[float]] = 1.,
                  n_food_items: int = 3,
-                 rotation_step: float = 90,
-                 forward_step: float = .1,
-                 agent_size: float = .1,
-                 food_size: float = .1,
+                 rotation_step: float = 20,
+                 forward_step: float = .01,
+                 agent_size: float = .05,
+                 food_size: float = .05,
+                 vision_depth: float = .15,
+                 vision_field_angle: float = 180.,
+                 vision_resolution: int = 10,
                  fps: Optional[int] = None,
                  seed=None,
                  ) -> None:
@@ -57,6 +60,9 @@ class MazeForagingEnv(BaseForagingEnv):
             forward_step=forward_step,
             agent_size=agent_size,
             food_size=food_size,
+            vision_depth=vision_depth,
+            vision_field_angle=vision_field_angle,
+            vision_resolution=vision_resolution,
             fps=fps,
             seed=seed,
         )
@@ -82,12 +88,15 @@ class MazeForagingEnv(BaseForagingEnv):
         # self._background_img = convert_image_to_pygame(self._background)
 
     def _draw_env(self, screen) -> None:
-        super()._draw_env(screen)
-
         # draw borders: (inefficient because it does this each rendering loop)
         # todo: do it efficiently
         for plg in self.__borders_coords_on_screen:
             pygame.draw.polygon(screen, self.border_color, plg)
+
+        # draw agent and food items later, so you can see them above borders
+        # if for some reasons they are plotted outside the maze, but mainly you can see
+        # vision points above borders
+        super()._draw_env(screen)
 
     def _init_state(self) -> None:
         super()._init_state()
