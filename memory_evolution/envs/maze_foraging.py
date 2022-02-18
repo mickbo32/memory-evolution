@@ -107,7 +107,7 @@ class MazeForagingEnv(BaseForagingEnv):
     def _get_observation(self) -> np.ndarray:
         return super()._get_observation()
 
-    def _get_point_color(self, point: np.ndarray):
+    def _get_point_color(self, point):
         col = super()._get_point_color(point)
         if col is self.outside_color and col is not self.border_color:
             if self.__borders_union.covers(point):

@@ -233,6 +233,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # self.__food_items_polygons = list()  # set()
         self.__food_items_union = None
         self._env_img = None  # todo: make state (env_state) an object
+        self.__get_observation_points_cache = {}
 
         # sq = SeedSequence(self._seed)
         # seed = sq.spawn(1)[0]
@@ -461,12 +462,14 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
         # draw field of view of the agent:
         r = self._vision_point_win_radius
-        for pt in self._get_observation_points().flat:
-            if Polygon(self._main_border).covers(pt):
-                pt = self._get_point_env2win(pt)
-                circle = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
-                pygame.draw.circle(circle, (*COLORS['blue'], self._vision_point_transparency), (r, r), r)
-                screen.blit(circle, (pt.x - r, pt.y - r))
+        for row in self._get_observation_points():
+            for pt in row:
+                if Polygon(self._main_border).covers(pt):
+                    pt = self._get_point_env2win(pt)
+                    # pygame.draw.circle(screen, COLORS['blue'], pt.coords[0], r)
+                    circle = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+                    pygame.draw.circle(circle, (*COLORS['blue'], self._vision_point_transparency), (r, r), r)
+                    screen.blit(circle, (pt.x - r, pt.y - r))
 
     @override
     def _init_state(self) -> None:
@@ -596,7 +599,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 origin=self._agent.pos,
             )
             mov_line = LineString((self._agent.pos, pos))
-            movement_buff = unary_union((agent_buff,
+            movement_buff = unary_union((# agent_buff,  # agent_buff should be already in a valid position
                                          mov_line.buffer(self._agent.radius),
                                          pos.buffer(self._agent.radius)))
             if self.is_valid_position(movement_buff):
@@ -628,10 +631,15 @@ class BaseForagingEnv(gym.Env, MustOverride):
                     warn(f'Bisection method for collision correction is taking more than {i+1} iterations...')
                 if i == 40 - 1 and not valid:
                     warn(f'Bisection method for collision correction is taking more than {i+1} iterations...')
+                if i == 2000:
+                    raise AssertionError('Bisection not working',
+                                         self.is_valid_position(agent_buff),
+                                         self.is_valid_position(self._agent.get_polygon()),
+                                         self.is_valid_position(movement_buff))
             i += 1
         if prev_step != 0:
             mov_line = LineString((self._agent.pos, pos))
-            movement_buff = unary_union((agent_buff,
+            movement_buff = unary_union((# agent_buff,  # agent_buff should be already in a valid position
                                          mov_line.buffer(self._agent.radius),
                                          pos.buffer(self._agent.radius)))
             assert self.is_valid_position(movement_buff), (pos.wkt, self._agent.radius)
@@ -671,42 +679,55 @@ class BaseForagingEnv(gym.Env, MustOverride):
     def _get_observation(self) -> np.ndarray:
         """create an observation from the environment state"""
         points = self._get_observation_points()
-        obs = np.empty((*points.shape, self._n_channels), dtype=self.observation_space.dtype)
-        assert points.ndim == 2
-        for i in range(points.shape[0]):
-            for j in range(points.shape[1]):
-                obs[i, j] = self._get_point_color(points[i, j])
+        obs = np.empty((*self.observation_space.shape[:-1], self._n_channels), dtype=self.observation_space.dtype)
+        for i in range(self.observation_space.shape[0]):
+            for j in range(self.observation_space.shape[1]):
+                obs[i, j] = self._get_point_color(points[i][j])
         obs = black_n_white(obs)
         self.debug_info['_get_observation']['obs'] = obs
         return obs
 
-    def _get_observation_points(self) -> np.ndarray:
-        line = LineString((self._agent.pos,
-                           (self._agent.pos.x + self._vision_depth,
-                            self._agent.pos.y)))
-        span = np.linspace(0., 1., num=self._vision_resolution)
-        assert span[-1] == 1., f'{span[-1]:.30f}'
-        points_on_line = []
-        for s in span:
-            p = line.interpolate(s, normalized=True)
-            pt = Point(p.x, self._agent.pos.y)
-            points_on_line.append(pt)
-        line = MultiPoint(points_on_line)
+    def _get_observation_points(self) -> list[list[Point]]:
 
-        angles = np.linspace(self._agent.head_direction + self._vision_field_angle / 2,
-                             self._agent.head_direction - self._vision_field_angle / 2,
-                             num=self.vision_field_n_angles)
-        points = np.empty(self.observation_space.shape[:-1], dtype=Point)
-        for j, alpha in enumerate(angles):
-            rot_ln_bnd = rotate(line, alpha, self._agent.pos)
-            assert len(points_on_line) == len(rot_ln_bnd), (len(points_on_line), len(rot_ln_bnd))
-            for i, pt in enumerate(rot_ln_bnd):
-                points[len(points_on_line) - 1 - i, j] = pt
+        if self.__get_observation_points_cache.get('last_step_count', None) != self.step_count:
+            self.__get_observation_points_cache['last_step_count'] = self.step_count
 
-        return points
+            line = LineString((self._agent.pos,
+                               (self._agent.pos.x + self._vision_depth,
+                                self._agent.pos.y)))
+            span = np.linspace(0., 1., num=self._vision_resolution)
+            assert span[-1] == 1., f'{span[-1]:.30f}'
+            points_on_line = []
+            for s in span:
+                p = line.interpolate(s, normalized=True)
+                pt = Point(p.x, self._agent.pos.y)
+                points_on_line.append(pt)
+            line = LineString(points_on_line)
+
+            angles = np.linspace(self._agent.head_direction + self._vision_field_angle / 2,
+                                 self._agent.head_direction - self._vision_field_angle / 2,
+                                 num=self.vision_field_n_angles)
+
+            points = [[] for _ in range(self.observation_space.shape[0])]
+            for j, alpha in enumerate(angles):
+                for i, pt in enumerate(rotate(line, alpha, self._agent.pos).coords):
+                    points[len(points_on_line) - 1 - i].append(Point(pt))
+
+            # points = []
+            # for alpha in angles:
+            #     points.extend(rotate(line, alpha, self._agent.pos).coords)
+            # assert len(points) == self._vision_resolution * self.vision_field_n_angles, len(points)
+            # points = [[Point(points[i + j * len(points_on_line)]) for j in range(len(angles))]
+            #           for i in range(len(points_on_line) - 1, -1, -1)]
+
+            self.__get_observation_points_cache['points'] = points
+        # else:
+        #     print('cache hit')
+
+        return self.__get_observation_points_cache['points']
 
     @override
-    def _get_point_color(self, point: np.ndarray):
+    def _get_point_color(self, point):
         assert isinstance(point, Point), point
         col = self.outside_color
         if self.__food_items_union.covers(point):
@@ -798,7 +819,6 @@ class BaseForagingEnv(gym.Env, MustOverride):
         plg.intersects(plg2)
         Out[14]: True
         """
-        assert type(Point(0, 0).buffer(1)) is Polygon, type(Point(0, 0).buffer(1))  # todo: move in tests
         # convert pos to index if it is not already:
         if not isinstance(pos, (Point, Polygon)):
             raise TypeError('`pos` should be an instance of Point or Polygon')

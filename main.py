@@ -24,6 +24,9 @@ if __name__ == '__main__':
     # env = TMaze(env_size=(1.5, 1.), fps=None, seed=42, n_food_items=50)
     # env = TMaze(.1001, env_size=(1.5, 1.), fps=None, seed=42)
     env = TMaze(seed=42)
+    print('observation_space:',
+          env.observation_space.shape,
+          np.asarray(env.observation_space.shape).prod())
     check_env(env)  # todo: move in tests
 
     # print(env.action_space)  # Discrete(4)
@@ -45,9 +48,9 @@ if __name__ == '__main__':
             assert env.step_count == t, (env.step_count, t)
             observation, reward, done, info = env.step(action)
             assert env.step_count == t + 1, (env.step_count, t)
-            print(observation)
-            print(info['state']['agent'])
-            print(len(info['state']['food_items']), info['state']['food_items'])
+            # print(observation)
+            # print(info['state']['agent'])
+            # print(len(info['state']['food_items']), info['state']['food_items'])
             # pprint(info)
             if done:
                 env.render()
