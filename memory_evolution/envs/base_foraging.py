@@ -141,7 +141,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                  forward_step: float = .01,
                  agent_size: float = .05,
                  food_size: float = .05,
-                 vision_depth: float = .15,
+                 vision_depth: float = .2,
                  vision_field_angle: float = 180.,
                  vision_resolution: int = 10,
                  fps: Optional[int] = None,  # 60 or 30  # todo
@@ -159,11 +159,13 @@ class BaseForagingEnv(gym.Env, MustOverride):
             forward_step: amount of maximum forward motion per tick.
             agent_size: agent diameter.
             food_size: food item diameter.
-            vision_depth: depth of the sight of the agent.
+            vision_depth: depth of the sight of the agent, each straight line of vision
+                    will be extended for a ``vision_depth`` length.
             vision_field_angle: angle of the full field of view of the agent.
-            vision_resolution: how many sample to take for each line and how many lines to take,
-                               i.e. an array ``vision_resolution * vision_resolution`` is provided as
-                               observation.
+            vision_resolution: how many sample to take for each straight line of vision,
+                    i.e. the number of observation points will be
+                    ``vision_resolution * self.vision_field_n_angles``,
+                    the observation shape can be accessed by ``self.observation_space.shape``.
             fps: frames per second, if it is None it does the rendering as fast as possible.
             seed: seed for random generators.
         """
@@ -198,6 +200,11 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._vision_depth = vision_depth
         self._vision_field_angle = vision_field_angle
         self._vision_resolution = vision_resolution
+        vision_step = self._vision_depth / self._vision_resolution
+        gamma = math.degrees(2 * math.asin(vision_step / 2 / self._vision_depth))
+        self.vision_field_n_angles = int(self._vision_field_angle / gamma)
+        # print('vision:', self._vision_depth, self._vision_field_angle, self._vision_resolution,
+        #       vision_step, gamma, self.vision_field_n_angles)
         self._fps = 0 if fps is None else fps
         self._seed = seed
         self._seedsequence = SeedSequence(self._seed)
@@ -205,6 +212,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self.agent_color = COLORS['red']
         self.food_color = COLORS['black']
         self.background_color = COLORS['white']  # todo: do it with Texture
+        self.outside_color = COLORS['black']
 
         self._platform = Polygon((Point(0, 0), Point(0, self._env_size[1]),
                                   Point(*self._env_size), Point(self._env_size[0], 0)))
@@ -233,7 +241,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
                                        dtype=np.float32,
                                        seed=seeds[0])  # [rotation, forward motion]
         self.observation_space = spaces.Box(low=0, high=255,
-                                            shape=(self._vision_resolution, self._vision_resolution, 1),
+                                            shape=(self._vision_resolution,
+                                                   self.vision_field_n_angles,
+                                                   1),
                                             dtype=np.uint8,
                                             seed=seeds[1])
         self.env_space = spaces.Box(low=0, high=255,
@@ -638,27 +648,21 @@ class BaseForagingEnv(gym.Env, MustOverride):
         return reward
 
     @override
-    def _get_observation(self): # todo
+    def _get_observation(self) -> np.ndarray:
         """create an observation from the environment state"""
-        # todo
         points = self._get_observation_points()
-        obs = []
-        for pt in points:
+        obs = np.zeros((len(points), self._n_channels),
+                       dtype=self.observation_space.dtype)
+        for i, pt in enumerate(points):
             pt = Point(pt)
-            if self.__food_items_union.covers(pt):
-                obs.append(self.food_color)
-            elif self._platform.covers(pt):
-                obs.append(self.background_color)
-            else:
-                # borders  # todo assert
-                obs.append(COLORS['black'])
+            obs[i] = self._get_point_color(pt)
 
         def black_n_white(x: np.ndarray):
-            return x.sum(None) / sum(x.shape)
+            return (x.sum(-1) / x.shape[-1]).round().astype(x.dtype)[..., None]
             # np.sum: dtype: if a is unsigned then an unsigned integer
             #         of the same precision as the platform integer is used.
-        obs = list(map(black_n_white, obs))
-        obs = np.asarray(obs, dtype=self.observation_space.dtype).reshape(self.observation_space.shape)
+        obs = black_n_white(obs)
+        obs = obs.reshape(self.observation_space.shape, order='F')  # todo: make it efficient (keep the same order: 'C')
         self.debug_info['_get_observation']['obs'] = obs
         return obs
 
@@ -677,13 +681,22 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
         angles = np.linspace(self._agent.head_direction + self._vision_field_angle / 2,
                              self._agent.head_direction - self._vision_field_angle / 2,
-                             num=self._vision_resolution)
+                             num=self.vision_field_n_angles)
         points = []
         for alpha in angles:
             points.extend(rotate(line, alpha, self._agent.pos).coords)
-        assert len(points) == self._vision_resolution ** 2, len(points)
+        assert len(points) == self._vision_resolution * self.vision_field_n_angles, len(points)
 
         return points
+
+    @override
+    def _get_point_color(self, point: Point):
+        col = self.outside_color
+        if self.__food_items_union.covers(point):
+            col = self.food_color
+        elif self._platform.covers(point):
+            col = self.background_color
+        return col
 
     @override
     def _is_done(self) -> bool:

@@ -34,7 +34,7 @@ class MazeForagingEnv(BaseForagingEnv):
                  forward_step: float = .01,
                  agent_size: float = .05,
                  food_size: float = .05,
-                 vision_depth: float = .15,
+                 vision_depth: float = .2,
                  vision_field_angle: float = 180.,
                  vision_resolution: int = 10,
                  fps: Optional[int] = None,
@@ -67,16 +67,16 @@ class MazeForagingEnv(BaseForagingEnv):
             seed=seed,
         )
 
-        self.border_color = COLORS['black']
+        self.border_color = self.outside_color
         self._borders = borders
         self.__borders_coords_on_screen = [[self._get_point_env2win(pt) for pt in plg.boundary.coords]
                                            for plg in self._borders]
+        self.__borders_union = unary_union(self._borders)
         for plg in self.__borders_coords_on_screen:
             plg = Polygon(plg)
             assert is_simple_polygon(plg), plg.wkt
-        borders_union = unary_union(self._borders)
         # update self._platform:
-        self._platform = self._platform.difference(borders_union)
+        self._platform = self._platform.difference(self.__borders_union)
         if not is_simple_polygon(self._platform):
             raise ValueError(f"'borders' create an unreachable part in the maze "
                              f"(or there is a problem with self._platform: "
@@ -104,8 +104,15 @@ class MazeForagingEnv(BaseForagingEnv):
     def _update_state(self, action) -> Real:
         return super()._update_state(action)
 
-    def _get_observation(self):
+    def _get_observation(self) -> np.ndarray:
         return super()._get_observation()
+
+    def _get_point_color(self, point):
+        # todo: do it efficiently
+        col = super()._get_point_color(point)
+        if self.__borders_union.covers(point):
+            col = self.border_color
+        return col
 
     def _is_done(self) -> bool:
         return super()._is_done()

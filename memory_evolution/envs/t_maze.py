@@ -34,7 +34,7 @@ class TMaze(MazeForagingEnv):
                  forward_step: float = .01,
                  agent_size: float = .05,
                  food_size: float = .05,
-                 vision_depth: float = .15,
+                 vision_depth: float = .2,
                  vision_field_angle: float = 180.,
                  vision_resolution: int = 10,
                  fps: Optional[int] = None,
