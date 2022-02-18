@@ -36,7 +36,7 @@ class TMaze(MazeForagingEnv):
                  food_size: float = .05,
                  vision_depth: float = .2,
                  vision_field_angle: float = 180.,
-                 vision_resolution: int = 30,
+                 vision_resolution: int = 10,
                  fps: Optional[int] = None,
                  seed=None,
                  ) -> None:

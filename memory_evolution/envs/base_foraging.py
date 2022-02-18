@@ -602,8 +602,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
             movement_buff = unary_union((# agent_buff,  # agent_buff should be already in a valid position
                                          mov_line.buffer(self._agent.radius),
                                          pos.buffer(self._agent.radius)))
+            assert prev_step > 0 and prev_step >= forward_step
             if self.is_valid_position(movement_buff):
-                assert prev_step > 0 and prev_step >= forward_step
                 if prev_step == forward_step:
                     valid = True
                 else:
@@ -615,9 +615,14 @@ class BaseForagingEnv(gym.Env, MustOverride):
                         forward_step = (prev_step + forward_step) / 2
                         # Do not update prev_step here
             else:
+                dist = pos.buffer(self._agent.radius).distance(self._platform.boundary)
                 # print(f'not valid (i={i})', self._agent.pos, pos)
-                prev_step = forward_step
-                forward_step /= 2
+                if dist <= agent_negligible_movement_pct * self._agent.size:
+                    forward_step = 0
+                    valid = True
+                else:
+                    prev_step = forward_step
+                    forward_step /= 2
             # If the program get stuck in this while loop you should still be able to quit:
             # don't check at any iteration (waste of resources),
             # don't check in at the first iteration (it will exit normally from the loop with high probability);
@@ -637,13 +642,15 @@ class BaseForagingEnv(gym.Env, MustOverride):
                                          self.is_valid_position(self._agent.get_polygon()),
                                          self.is_valid_position(movement_buff))
             i += 1
-        if prev_step != 0:
-            mov_line = LineString((self._agent.pos, pos))
-            movement_buff = unary_union((# agent_buff,  # agent_buff should be already in a valid position
-                                         mov_line.buffer(self._agent.radius),
-                                         pos.buffer(self._agent.radius)))
-            assert self.is_valid_position(movement_buff), (pos.wkt, self._agent.radius)
-        self._agent.pos = pos
+        assert forward_step >= 0
+        if forward_step > 0:
+            if prev_step != 0:
+                mov_line = LineString((self._agent.pos, pos))
+                movement_buff = unary_union((# agent_buff,  # agent_buff should be already in a valid position
+                                             mov_line.buffer(self._agent.radius),
+                                             pos.buffer(self._agent.radius)))
+                assert self.is_valid_position(movement_buff), (pos.wkt, self._agent.radius)
+            self._agent.pos = pos
 
         # food collected?
         # "food collected if the agent intersects the central point of the food"
