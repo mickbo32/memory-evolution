@@ -1,4 +1,5 @@
 from ._envs import (
+    black_n_white,
     COLORS,
     convert_image_to_pygame,
     is_color,

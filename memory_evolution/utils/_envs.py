@@ -40,24 +40,22 @@ assert any(any((c == 255) for c in col)
 # print(COLORS)
 
 
+def black_n_white(img: np.ndarray):
+    return (img.sum(-1) / img.shape[-1]).round().astype(img.dtype)[..., None]
+    # np.sum: dtype: if a is unsigned then an unsigned integer
+    #         of the same precision as the platform integer is used.
+
+
 class Pos:
     """Coordinates of a Position.
     `coords` coordinates should be all float
     """
 
     def __init__(self, *coords):
-        # if ndim <= 0:
-        #     raise ValueError('`ndim` must be positive.')
-        # if ndim != len(coords):
-        #     raise TypeError(f'`ndim`={ndim} coords are expected, {len(coords)} coords was given (as arguments)')
         assert isinstance(coords, tuple)
         if not all(isinstance(c, float) for c in coords):
             raise TypeError('`coords` coordinates should be all float')
         self._coords = tuple(coords)
-
-    @property
-    def ndim(self):
-        return len(self._coords)
 
     def __len__(self):
         return len(self._coords)
@@ -78,20 +76,20 @@ class Pos:
 
     @property
     def x(self):
-        if self.ndim > 3 or self.ndim < 1:
-            raise AttributeError('When `ndim` is higher than 3 or less than 1, `x` attribute is not supported')
+        if len(self) > 3 or len(self) < 1:
+            raise AttributeError('When `len(self)` is higher than 3 or less than 1, `x` attribute is not supported')
         return self._coords[0]
 
     @property
     def y(self):
-        if self.ndim > 3 or self.ndim < 2:
-            raise AttributeError('When `ndim` is higher than 3 or less than 2, `y` attribute is not supported')
+        if len(self) > 3 or len(self) < 2:
+            raise AttributeError('When `len(self)` is higher than 3 or less than 2, `y` attribute is not supported')
         return self._coords[1]
 
     @property
     def z(self):
-        if self.ndim > 3 or self.ndim < 3:
-            raise AttributeError('When `ndim` is higher than 3 or less than 3, `z` attribute is not supported')
+        if len(self) > 3 or len(self) < 3:
+            raise AttributeError('When `len(self)` is higher than 3 or less than 3, `z` attribute is not supported')
         return self._coords[2]
 
     def __repr__(self):

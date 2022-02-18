@@ -14,11 +14,12 @@ import numpy as np
 from numpy.random import SeedSequence, default_rng
 import pygame
 from shapely.affinity import rotate, scale, translate
-from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiPolygon
+from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiPoint, MultiPolygon
 from shapely.ops import unary_union, triangulate
 
 from memory_evolution.utils import (
-    COLORS, convert_image_to_pygame, is_color, is_simple_polygon, is_triangle,
+    black_n_white, COLORS, convert_image_to_pygame, is_color,
+    is_simple_polygon, is_triangle,
     Pos, triangulate_nonconvex_polygon,
 )
 from memory_evolution.utils import MustOverride, override
@@ -53,7 +54,7 @@ class Agent:
         self._size = size
         self._radius = size / 2
         self.head_direction = head_direction
-        if head_direction and self.pos.has_z:  # self.pos.ndim != 2:
+        if head_direction and self.pos.has_z:  # len(self.pos) != 2:
             raise NotADirectoryError("`head_direction` not implemented yet for spaces different from 2D space")
 
     @property
@@ -362,7 +363,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # if you want to slow down and see everything use tick(), otherwise use set_timer()
         # and check events (or just use a timer and a variable tracking the last frame time)
         dt = self._fpsClock.tick(self._fps)
-        print(dt)
+        print('dt:', dt)
         # pygame Clock tick is built for efficiency, not for precision,
         # thus take in account some dt error in the assertion.
         assert self._fps == 0 or dt >= 1000 / self._fps * .99 - 1, (dt, 1000 / self._fps * .99 - 1, self._fps)
@@ -410,7 +411,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
             point = Point(point.x * env2win_resize_factor,
                           (env_size[1] - point.y) * env2win_resize_factor)
         elif isinstance(point, np.ndarray):
-            if point.ndim != 2:
+            if point.ndim != 1:
+                raise ValueError("np.ndarray should represent a point in D dimensions (thus ndim==1 and shape==(D,))")
+            if point.shape[0] != 2:
                 raise NotImplementedError(msg_2d_error)
             if not (0 <= point[0] <= env_size[0] and 0 <= point[1] <= env_size[1]):
                 raise ValueError(msg_point_outside_env_error)
@@ -458,14 +461,12 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
         # draw field of view of the agent:
         r = self._vision_point_win_radius
-        points = self._get_observation_points()
-        for pt in points:
-            if Polygon(self._main_border).covers(Point(pt)):
+        for pt in self._get_observation_points().flat:
+            if Polygon(self._main_border).covers(pt):
                 pt = self._get_point_env2win(pt)
-                # pygame.draw.circle(screen, COLORS['blue'], pt, r)
                 circle = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
-                pygame.draw.circle(circle, COLORS['blue'].tolist() + [self._vision_point_transparency], (r, r), r)
-                screen.blit(circle, (pt[0] - r, pt[1] - r))
+                pygame.draw.circle(circle, (*COLORS['blue'], self._vision_point_transparency), (r, r), r)
+                screen.blit(circle, (pt.x - r, pt.y - r))
 
     @override
     def _init_state(self) -> None:
@@ -670,22 +671,16 @@ class BaseForagingEnv(gym.Env, MustOverride):
     def _get_observation(self) -> np.ndarray:
         """create an observation from the environment state"""
         points = self._get_observation_points()
-        obs = np.zeros((len(points), self._n_channels),
-                       dtype=self.observation_space.dtype)
-        for i, pt in enumerate(points):
-            pt = Point(pt)
-            obs[i] = self._get_point_color(pt)
-
-        def black_n_white(x: np.ndarray):
-            return (x.sum(-1) / x.shape[-1]).round().astype(x.dtype)[..., None]
-            # np.sum: dtype: if a is unsigned then an unsigned integer
-            #         of the same precision as the platform integer is used.
+        obs = np.empty((*points.shape, self._n_channels), dtype=self.observation_space.dtype)
+        assert points.ndim == 2
+        for i in range(points.shape[0]):
+            for j in range(points.shape[1]):
+                obs[i, j] = self._get_point_color(points[i, j])
         obs = black_n_white(obs)
-        obs = obs.reshape(self.observation_space.shape, order='F')  # todo: make it efficient (keep the same order: 'C')
         self.debug_info['_get_observation']['obs'] = obs
         return obs
 
-    def _get_observation_points(self) -> list[tuple[float]]:
+    def _get_observation_points(self) -> np.ndarray:
         line = LineString((self._agent.pos,
                            (self._agent.pos.x + self._vision_depth,
                             self._agent.pos.y)))
@@ -696,20 +691,23 @@ class BaseForagingEnv(gym.Env, MustOverride):
             p = line.interpolate(s, normalized=True)
             pt = Point(p.x, self._agent.pos.y)
             points_on_line.append(pt)
-        line = LineString(points_on_line)
+        line = MultiPoint(points_on_line)
 
         angles = np.linspace(self._agent.head_direction + self._vision_field_angle / 2,
                              self._agent.head_direction - self._vision_field_angle / 2,
                              num=self.vision_field_n_angles)
-        points = []
-        for alpha in angles:
-            points.extend(rotate(line, alpha, self._agent.pos).coords)
-        assert len(points) == self._vision_resolution * self.vision_field_n_angles, len(points)
+        points = np.empty(self.observation_space.shape[:-1], dtype=Point)
+        for j, alpha in enumerate(angles):
+            rot_ln_bnd = rotate(line, alpha, self._agent.pos)
+            assert len(points_on_line) == len(rot_ln_bnd), (len(points_on_line), len(rot_ln_bnd))
+            for i, pt in enumerate(rot_ln_bnd):
+                points[len(points_on_line) - 1 - i, j] = pt
 
         return points
 
     @override
-    def _get_point_color(self, point: Point):
+    def _get_point_color(self, point: np.ndarray):
+        assert isinstance(point, Point), point
         col = self.outside_color
         if self.__food_items_union.covers(point):
             col = self.food_color
