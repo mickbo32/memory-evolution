@@ -2,7 +2,7 @@ from collections import defaultdict, Counter
 from collections.abc import Sequence
 import math
 from numbers import Number, Real
-from typing import Optional, Union, Any
+from typing import Any, Literal, Optional, Union
 from warnings import warn
 import sys
 
@@ -101,9 +101,12 @@ class Pos:
         #         + ", ".join([str(c) for c in self._coords]) + ")")
 
 
-def convert_image_to_pygame(image):
+IMAGE_FORMAT = Literal["P", "RGB", "BGR", "RGBX", "RGBA", "ARGB"]
+
+
+def convert_image_to_pygame(image, format_: IMAGE_FORMAT = "RGB"):
     if isinstance(image, np.ndarray) and image.dtype == np.uint8:
-        return pygame.image.frombuffer(image.tobytes(), image.shape[1::-1], "RGB")
+        return pygame.image.frombuffer(image.tobytes(), image.shape[1::-1], format_)
     else:
         raise NotImplementedError(f"{type(image)!r}"
                                   + (f", dtype={image.dtype!r}"

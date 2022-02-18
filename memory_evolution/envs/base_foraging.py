@@ -214,6 +214,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self.background_color = COLORS['white']  # todo: do it with Texture
         self.outside_color = COLORS['black']
 
+        self._vision_point_win_radius = max(self._env2win_resize_factor * min(self._env_size) * .005, 1)
+        self._vision_point_transparency = self.__get_vision_point_transparency(
+            self._vision_point_win_radius, self._env2win_resize_factor * vision_step)
+
         self._platform = Polygon((Point(0, 0), Point(0, self._env_size[1]),
                                   Point(*self._env_size), Point(self._env_size[0], 0)))
         # self._borders = []
@@ -275,6 +279,18 @@ class BaseForagingEnv(gym.Env, MustOverride):
     @staticmethod
     def _get_env_size(env_size):
         return tuple(env_size) if isinstance(env_size, Sequence) else (env_size, env_size)
+
+    @staticmethod
+    def __get_vision_point_transparency(point_win_radius, vision_win_step):
+        transparency = .8  # base
+        threshold = .5
+        assert 0 < threshold < 1
+        area_covered_by_exterior_points = math.pi * point_win_radius ** 2 / vision_win_step ** 2
+        # note: area could be more than 1 (if many point circles cover the same area)
+        if area_covered_by_exterior_points >= threshold:
+            transparency *= threshold / area_covered_by_exterior_points
+        assert 0 <= transparency <= 1, transparency
+        return int(255 * transparency)
 
     def step(self, action) -> tuple[np.ndarray, Real, bool, dict]:
         print('Step')
@@ -441,12 +457,15 @@ class BaseForagingEnv(gym.Env, MustOverride):
                            self._agent.radius * self._env2win_resize_factor)
 
         # draw field of view of the agent:
+        r = self._vision_point_win_radius
         points = self._get_observation_points()
         for pt in points:
             if Polygon(self._main_border).covers(Point(pt)):
                 pt = self._get_point_env2win(pt)
-                r = max(self._env2win_resize_factor * min(self._env_size) * .005, 1)
-                pygame.draw.circle(screen, COLORS['blue'], pt, r)
+                # pygame.draw.circle(screen, COLORS['blue'], pt, r)
+                circle = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+                pygame.draw.circle(circle, COLORS['blue'].tolist() + [self._vision_point_transparency], (r, r), r)
+                screen.blit(circle, (pt[0] - r, pt[1] - r))
 
     @override
     def _init_state(self) -> None:
