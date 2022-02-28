@@ -8,4 +8,6 @@ from ._envs import (
     Pos,
     triangulate_nonconvex_polygon,
 )
+from ._evaluate_agent import evaluate_agent
 from ._override import MustOverride, MustOverrideMeta, override
+

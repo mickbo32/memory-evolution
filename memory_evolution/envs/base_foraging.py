@@ -226,6 +226,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._main_border = self._platform.boundary  # self._main_border_line v.s. self._main_border->.buffer(.05 * self._env_size[0], single_sided=True)
         self._fpsClock = pygame.time.Clock()
         self.debug_info = defaultdict(dict)
+        self.time_step = 1
+        self.t = None
 
         self.step_count = None
         self._agent = None
@@ -242,8 +244,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
         seeds = self._seedsequence.generate_state(3)  # default_rng() can be created with _seedsequence directly, spaces not.
         seeds = [int(s) for s in seeds]  # spaces want int.
         self._seedsequence = self._seedsequence.spawn(1)[0]  # update _seedsequence for new seeds next time you ask a seed.
-        self.action_space = spaces.Box(low=np.asarray([-1., 0.], dtype=np.float32),
-                                       high=np.asarray([1., 1.], dtype=np.float32),
+        self.action_space = spaces.Box(low=0., high=1.,
+                                       shape=(2,),
                                        dtype=np.float32,
                                        seed=seeds[0])  # [rotation, forward motion]
         self.observation_space = spaces.Box(low=0, high=255,
@@ -297,10 +299,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
     def step(self, action) -> tuple[np.ndarray, Real, bool, dict]:
         print('Step')
         if not self.__has_been_ever_reset:
-            # warn('Calling step() method before reset() method. Forcing reset() method...')
             self.reset()
         if not self.action_space.contains(action):
-            raise ValueError(f"'action' is not in action_space; action={action}, action_space={self.action_space}")
+            raise ValueError(f"'action' is not in action_space; action={action}, action_space={self.action_space}")  # if the values are correct, the error is probably due to different dtype
+        self.t += self.time_step
 
         # update environment state:
         # compute reward:
@@ -318,10 +320,22 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self.step_count += 1
         return observation, reward, done, info
 
-    def reset(self):
+    def reset(
+        self,
+        *,
+        seed: Optional[int] = None,
+        return_info: bool = False,
+        options: Optional[dict] = None,
+    ) -> Union[gym.core.ObsType, tuple[gym.core.ObsType, dict]]:
+
+        # reset init mandatory first due diligence:
         print('Reset')
+        super().reset(seed=seed,
+                      return_info=return_info,
+                      options=options)
         self.__has_been_ever_reset = True
         self.step_count = 0
+        self.t = 0
 
         # init environment state:
         self._init_state()
@@ -333,7 +347,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # ask the rendering engine to reset the screen:
         self._rendering_reset_request = True
 
-        return observation
+        if not return_info:
+            return observation
+        else:
+            return observation, self._get_info()
 
     def render(self, mode='human'):
         print('Rendering')
@@ -342,7 +359,6 @@ class BaseForagingEnv(gym.Env, MustOverride):
             # init pygame module:
             pygame.init()
 
-        self._rendering_reset_request = True  # todo: update instead of rewriting each time
         # reset screen if asked:
         if self._rendering_reset_request:
             self._rendering_reset_request = False
@@ -355,6 +371,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
             self._screen = pygame.display.set_mode(self._window_size)
             self._screen.blit(self._background_img, (0, 0))
 
+        self._screen.blit(self._background_img, (0, 0))  # todo: update instead of rewriting each time
+        #                                                # todo: and use sprites
         self._draw_env(self._screen)
 
         # flip/update the screen:
@@ -376,6 +394,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 sys.exit()
 
     def close(self):
+        self.__has_been_ever_reset = False
         # pygame.display.quit()
         pygame.quit()
 
@@ -582,10 +601,14 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
         # update agent position:
         # rotate
+        rotation_step = self._rotation_step * (action[0] * 2 - 1.)
+        assert -1. * self._rotation_step <= rotation_step <= 1. * self._rotation_step, rotation_step
         self._agent.head_direction = (self._agent.head_direction
-                                      + self._rotation_step * action[0]) % 360
+                                      + rotation_step) % 360
         agent_buff = self._agent.get_polygon()
         forward_step = self._forward_step * action[1]
+        assert 0. <= forward_step, forward_step
+        assert 0. <= forward_step <= 1. * self._forward_step, forward_step
         prev_step = forward_step
         # Try first if pos is it valid,
         # only if is not valid (there is collision) use bisection algorithm to find a correct pos.
@@ -773,10 +796,12 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 'vision_resolution': self._vision_resolution,
                 'fps': self._fps,
                 'seed': self._seed,
+                'time_step': self.time_step,
             },
             # 'env_shape': self.env_space.shape,
             # 'env_state_img': self._env_img,
             'current_step': self.step_count,
+            't': self.t,
             'debug_info': self.debug_info,
         }
         return info
@@ -849,7 +874,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
         epsilon = max(np.finfo(np.float32).resolution * (3 * 10), .0001)
         init_platform = self._platform if platform is None else platform
-        rs = self.env_space.np_random  # RandomState object
+        rng = self.env_space.np_random
 
         poses = []
         # chosen = []  # polygons already positioned
@@ -874,10 +899,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
             # choose randomly a triangle proportionally to its area:
             probs = np.asarray([tr.area for tr in triangles])
             probs /= probs.sum(None)
-            tr = rs.choice(triangles, p=probs)
+            tr = rng.choice(triangles, p=probs)
 
             # pick a random point in this triangle:
-            pt = self._get_random_point_in_triangle(tr, rs)
+            pt = self._get_random_point_in_triangle(tr, rng)
 
             # create object, update poses and chosen:
             pt_buff = pt.buffer(r)  # + epsilon * r)
@@ -898,12 +923,13 @@ class BaseForagingEnv(gym.Env, MustOverride):
         return poses
 
     @staticmethod
-    def _get_random_point_in_triangle(triangle, random_state) -> Point:
+    def _get_random_point_in_triangle(triangle, random_generator) -> Point:
 
         epsilon = np.finfo(np.float32).resolution * (3 * 10)
 
-        if not isinstance(random_state, np.random.RandomState):
-            raise TypeError("'random_state' is not a np.random.RandomState object")
+        if not isinstance(random_generator, np.random.Generator):
+            raise TypeError("'random_state' is not a np.random.Generator object"
+                            f", the object provided is of type {type(random_generator)} instead.")
         if not isinstance(triangle, Polygon):
             raise TypeError("'triangle' is not a Polygon object")
         if not is_triangle(triangle):
@@ -923,7 +949,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
         # generate random point in the space parallelogram:
         # uniform [0, 1)  # [0,1] would be better, but anyway changed for floating point precision errors, so no problem
-        u1, u2 = random_state.random_sample(2)  # * (1 - epsilon * 2) + epsilon
+        u1, u2 = random_generator.random(2)  # * (1 - epsilon * 2) + epsilon
 
         # if point outside triangle (2nd half of parallelogram) map in the triangle (1st half of parallelogram):
         if u1 + u2 > 1:
