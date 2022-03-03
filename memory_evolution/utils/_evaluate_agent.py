@@ -57,7 +57,7 @@ def evaluate_agent(agent, env: gym.Env,
         RuntimeError: if ``max_iters_per_episode`` is not ``None`` and
             episode has not finished after ``max_iters_per_episode`` timesteps.
     """
-    time_step = env.time_step  # todo: non serve, basta fare env.t - prev_env_t; togli time_step da env e chiama env._dt
+    time_step = env.time_step  # todo: non serve, basta fare env.t - prev_env_t; togli time_step da env e chiama env.dt
     fitnesses = []
     for i_episode in range(episodes):
         if render:
@@ -66,8 +66,15 @@ def evaluate_agent(agent, env: gym.Env,
         # Reset env and agent:
         observation = env.reset()
         agent.reset()
+        if isinstance(env, memory_evolution.envs.BaseForagingEnv):
+            if 'prev_episode_agent_pos' in locals():
+                assert env._agent.pos != prev_episode_agent_pos  # there is a chance that could be the same, but should be very low.
+            else:
+                assert i_episode == 0, i_episode
+            prev_episode_agent_pos = env._agent.pos
+            assert env._agent.pos == prev_episode_agent_pos
         assert env.t == 0., env.t
-        fitness = 0.0
+        fitness = 0.0  # food collected
         if render:
             # print(observation)
             env.render()
@@ -87,6 +94,7 @@ def evaluate_agent(agent, env: gym.Env,
             observation, reward, done, info = env.step(action)
             if isinstance(env, memory_evolution.envs.BaseForagingEnv):
                 assert env.step_count == i + 1, (env.step_count, i)
+            fitness += reward
             if render:
                 # print("Observation:", observation, sep='\n')
                 print("Action:", action, sep=' ')
@@ -98,6 +106,15 @@ def evaluate_agent(agent, env: gym.Env,
             i += 1
         end_t = env.t
         end_time_episode = time.perf_counter_ns()
+        if isinstance(env, memory_evolution.envs.BaseForagingEnv):
+            assert env.food_items_collected == fitness, (env.food_items_collected, fitness)
+            # todo: env should have only basic attributes, don't add unnecessary attributes
+            #  (don't_use unnecessary attributes .time_step, .food_items_collected, etc...,
+            #  use them only for asserts).
+        if isinstance(env, memory_evolution.envs.BaseForagingEnv):
+            assert fitness == int(fitness), (fitness, int(fitness))
+            fitness += env.get_agent_distance_to_nearest_food_item() / max(env._env_size) * .99
+            fitness = (fitness, env.get_agent_distance_to_nearest_food_item())  # todo: neat should be able to take tuples as fitness
         fitnesses.append(fitness)
         if done:
             if render:
@@ -105,6 +122,7 @@ def evaluate_agent(agent, env: gym.Env,
                 print(f"Episode finished after {i} timesteps"
                       f", for a total of {end_t} simulated seconds"
                       f" (in {(end_time_episode - start_time_episode) / 10 ** 9} actual seconds).")
+                print()
         else:
             raise RuntimeError(
                 f"Episode has not finished after {i} timesteps"

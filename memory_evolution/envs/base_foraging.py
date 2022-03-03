@@ -1,5 +1,6 @@
 from collections import defaultdict, Counter
 from collections.abc import Sequence
+import logging
 import math
 from numbers import Number, Real
 from typing import Optional, Union, Any
@@ -145,6 +146,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                  vision_depth: float = .2,
                  vision_field_angle: float = 180.,
                  vision_resolution: int = 10,
+                 max_steps: Optional[int] = None,
                  fps: Optional[int] = None,  # 60 or 30  # todo
                  seed=None,  # todo: int or SeedSequence
                  ) -> None:
@@ -167,6 +169,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
                     i.e. the number of observation points will be
                     ``vision_resolution * self.vision_field_n_angles``,
                     the observation shape can be accessed by ``self.observation_space.shape``.
+            max_steps: after this number of steps the environment is done (the
+                    ``max_steps``_th step it will return done); if ``None``
+                    continue forever (done always False).
             fps: frames per second, if it is None it does the rendering as fast as possible.
             seed: seed for random generators.
         """
@@ -206,6 +211,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self.vision_field_n_angles = int(self._vision_field_angle / gamma)
         # print('vision:', self._vision_depth, self._vision_field_angle, self._vision_resolution,
         #       vision_step, gamma, self.vision_field_n_angles)
+        self._max_steps = max_steps
         self._fps = 0 if fps is None else fps
         self._seed = seed
         self._seedsequence = SeedSequence(self._seed)
@@ -236,6 +242,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self.__food_items_union = None
         self._env_img = None  # todo: make state (env_state) an object
         self.__get_observation_points_cache = {}
+        self.food_items_collected = 0
 
         # sq = SeedSequence(self._seed)
         # seed = sq.spawn(1)[0]
@@ -297,7 +304,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         return int(255 * transparency)
 
     def step(self, action) -> tuple[np.ndarray, Real, bool, dict]:
-        print('Step')
+        logging.info('Step')
         if not self.__has_been_ever_reset:
             self.reset()
         if not self.action_space.contains(action):
@@ -329,13 +336,14 @@ class BaseForagingEnv(gym.Env, MustOverride):
     ) -> Union[gym.core.ObsType, tuple[gym.core.ObsType, dict]]:
 
         # reset init mandatory first due diligence:
-        print('Reset')
+        logging.info('Reset')
         super().reset(seed=seed,
                       return_info=return_info,
                       options=options)
         self.__has_been_ever_reset = True
         self.step_count = 0
         self.t = 0
+        self.food_items_collected = 0
 
         # init environment state:
         self._init_state()
@@ -353,7 +361,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
             return observation, self._get_info()
 
     def render(self, mode='human'):
-        print('Rendering')
+        logging.info('Rendering')
         if self._rendering is False:
             self._rendering = True
             # init pygame module:
@@ -381,11 +389,12 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # tick() stops the program, do you want to see everything slowly or just some samples?
         # if you want to slow down and see everything use tick(), otherwise use set_timer()
         # and check events (or just use a timer and a variable tracking the last frame time)
-        dt = self._fpsClock.tick(self._fps)
-        print('dt:', dt)
+        frame_dt = self._fpsClock.tick(self._fps)
+        logging.info(f'frame_dt: {frame_dt}')
         # pygame Clock tick is built for efficiency, not for precision,
         # thus take in account some dt error in the assertion.
-        assert self._fps == 0 or dt >= 1000 / self._fps * .99 - 1, (dt, 1000 / self._fps * .99 - 1, self._fps)
+        assert self._fps == 0 or frame_dt >= 1000 / self._fps * .99 - 1, (
+            frame_dt, 1000 / self._fps * .99 - 1, self._fps)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -650,15 +659,20 @@ class BaseForagingEnv(gym.Env, MustOverride):
             # don't check at any iteration (waste of resources),
             # don't check in at the first iteration (it will exit normally from the loop with high probability);
             if i >= 20 - 1:
+                msg = f'Bisection method for collision correction is taking more than {i + 1} iterations...'
                 if i % 100 == 99 and self._rendering:
-                    print(f"In the while loop (i={i}), quit event check.")
+                    msg = f"In the while loop (i={i}), quit event check."
+                    logging.warning(msg)
                     self._check_quit_and_quit()
                 if i == 20 - 1 and not valid:
-                    warn(f'Bisection method for collision correction is taking more than {i+1} iterations...')
+                    logging.warning(msg)
+                    warn(msg)
                 if i == 30 - 1 and not valid:
-                    warn(f'Bisection method for collision correction is taking more than {i+1} iterations...')
+                    logging.warning(msg)
+                    warn(msg)
                 if i == 40 - 1 and not valid:
-                    warn(f'Bisection method for collision correction is taking more than {i+1} iterations...')
+                    logging.warning(msg)
+                    warn(msg)
                 if i == 2000:
                     raise AssertionError('Bisection not working',
                                          self.is_valid_position(agent_buff),
@@ -677,7 +691,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
         # food collected?
         # "food collected if the agent intersects the central point of the food"
+        food_collected = 0
         if self.__food_items_union.intersects(agent_buff):
+            prev_n_foods = len(self._food_items)
+            prev_food_collected = self.food_items_collected
             # find which food (it could be more than one, if food items are allowed to be close to each other):
             # # for idx, food_buff in enumerate(self.__food_items_polygons):
             # #     if food_buff.intersects(agent_buff):
@@ -687,7 +704,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
             for idx, food in enumerate(self._food_items):
                 if agent_buff.intersects(food.pos):
                     remove_food.append(idx)
-                    print('Food collected')
+                    # print('Food collected')
+                    self.food_items_collected += 1
+                    logging.info(f'Food collected --- total food items collected: {self.food_items_collected}')
             for j, idx in enumerate(remove_food):
                 # if self._food_items is small this is efficient, otherwise not
                 # (this is O(R*N), N foods and R removed, you could do it O([N+]R)
@@ -695,12 +714,18 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 self._food_items.pop(idx - j)
             # self.__food_items_polygons = self.__get_food_items_polygons(self._food_items)
             self.__food_items_union = self.__get_food_items_union(self._food_items)
+            assert prev_n_foods >= len(self._food_items), (prev_n_foods, len(self._food_items))
+            food_collected = prev_n_foods - len(self._food_items)  # todo: is it working with parallel execution?
+            assert food_collected == self.food_items_collected - prev_food_collected, (
+                food_collected, prev_n_foods, len(self._food_items), self.food_items_collected, prev_food_collected,
+            )
+        assert food_collected >= 0, food_collected
 
         # update _env_img: -> pos: & rotate:
         # todo
 
         # compute reward:
-        reward = 0
+        reward = food_collected
 
         # self.debug_info['_update_state']
         return reward
@@ -769,7 +794,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
     @override
     def _is_done(self) -> bool:
         self.debug_info['_is_done'] = {}
-        return self.step_count >= 40 - 1
+        if self._max_steps is None:
+            return False
+        else:
+            return self.step_count >= self._max_steps - 1
 
     @override
     def _get_info(self) -> dict:
@@ -794,6 +822,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 'vision_depth': self._vision_depth,
                 'vision_field_angle': self._vision_field_angle,
                 'vision_resolution': self._vision_resolution,
+                'max_steps': self._max_steps,
                 'fps': self._fps,
                 'seed': self._seed,
                 'time_step': self.time_step,
@@ -857,6 +886,11 @@ class BaseForagingEnv(gym.Env, MustOverride):
         if pos.has_z:
             raise ValueError('`pos` should be 2D (and without channels)')
         return self._platform.covers(pos)
+
+    def get_agent_distance_to_nearest_food_item(self):
+        # return self._agent.get_polygon().distance(self.__food_items_union)
+        # more efficient:
+        return self._agent.pos.distance(self.__food_items_union) - self._agent.radius
 
     def _get_random_non_overlapping_positions(self,
                                               n,

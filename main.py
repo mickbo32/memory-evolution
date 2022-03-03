@@ -1,4 +1,9 @@
+import logging
+import os
 from pprint import pprint
+import random  # neat uses random  # todo: allow seeding in neat
+import sys
+import time
 
 import gym
 import matplotlib as mpl
@@ -6,27 +11,56 @@ import matplotlib.pyplot as plt
 import neat
 import numpy as np
 from numpy.random import SeedSequence
-import os
 import pandas as pd
-import sys
-import time
 
 from gym.utils.env_checker import check_env  # from stable_baselines.common.env_checker import check_env
 
-from memory_evolution.agents import RnnNeatAgent, CtrnnNeatAgent
+from memory_evolution.agents import BaseAgent, RnnNeatAgent, CtrnnNeatAgent
 from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze
 from memory_evolution.utils import evaluate_agent
 
+# matplotlib settings:
 mpl.use('Qt5Agg')  # Change matplotlib backend to show correctly in PyCharm.
 
+# logging settings:
+if __name__ == '__main__':
+    logFormatter = logging.Formatter(
+        "%(asctime)s [%(processName)-12s %(process)-7d] [%(threadName)-12s %(thread)-7d] "
+        "[%(levelname)-5s] %(module)-15s:  %(message)s")
 
-class NoneAgent:
+    rootLogger = logging.getLogger()
+    fileHandler = logging.FileHandler("mylogs.log")
+    fileHandler.setFormatter(logFormatter)
+    fileHandler.setLevel(logging.DEBUG)
+    rootLogger.addHandler(fileHandler)
+
+    consoleHandler = logging.StreamHandler(sys.stderr)  # sys.stderr default
+    consoleHandler.setFormatter(logFormatter)
+    consoleHandler.setLevel(logging.WARNING)
+    rootLogger.addHandler(consoleHandler)
+
+    PRINT_ALL_MESSAGES_ON_STDOUT = False
+    if PRINT_ALL_MESSAGES_ON_STDOUT:
+        consoleStdoutHandler = logging.StreamHandler(sys.stdout)
+        consoleStdoutHandler.setFormatter(logging.Formatter("%(message)s"))  # default
+        consoleStdoutHandler.setLevel(logging.NOTSET)
+        rootLogger.addHandler(consoleStdoutHandler)
+
+    rootLogger.setLevel(logging.NOTSET)  # logging.WARNING default for root, logging.NOTSET default for others.
+
+# neat random seeding:
+random.seed(42)
+logging.debug(random.getstate())
+
+
+class RandomAgent(BaseAgent):
 
     def __init__(self, env):
-        self.env = env
+        super().__init__()
+        self.set_env(env)
 
     def action(self, obs):
-        return self.env.action_space.sample()
+        return self.get_env().action_space.sample()
 
     def reset(self):
         pass
@@ -35,14 +69,6 @@ class NoneAgent:
     def eval_genome(genome, config) -> float:
         fitness = 0.0
         return fitness
-
-    @classmethod
-    def eval_genomes(cls, genomes, config) -> None:
-        for genome_id, genome in genomes:
-            genome.fitness = cls.eval_genome(genome, config)
-
-    def get_init_population(self, *args, **kwargs):
-        return None
 
     def evolve(self, *args, **kwargs):
         return self
@@ -109,7 +135,7 @@ def run(env: gym.Env, agent=None, episodes=1) -> None:
     print('Main loop')
 
     if agent is None:
-        agent = NoneAgent()
+        agent = RandomAgent(env)
 
     for i_episode in range(episodes):
         observation = env.reset()
@@ -146,7 +172,8 @@ if __name__ == '__main__':
     # env = TMaze(env_size=(1.5, 1.), fps=None, seed=42, n_food_items=20)
     # env = TMaze(env_size=(1.5, 1.), fps=None, seed=42, n_food_items=50)
     # env = TMaze(.1001, env_size=(1.5, 1.), fps=None, seed=42)
-    env = TMaze(seed=42)
+    # env = TMaze(seed=42)
+    env = TMaze(seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
     print('observation_space:',
           env.observation_space.shape,
           np.asarray(env.observation_space.shape).prod())
@@ -172,14 +199,22 @@ if __name__ == '__main__':
     # ----- MAIN LOOP -----
     # Evolve, interact, repeat.
 
-    # evaluate_agent(NoneAgent(env), env, episodes=2, render=True)
+    # evaluate_agent(RandomAgent(env), env, episodes=2, render=True)
 
     checkpointer = neat.Checkpointer(generation_interval=100,
                                      time_interval_seconds=300,
                                      filename_prefix='neat-checkpoint-')
+
     agent.set_env(env)
-    winner = agent.evolve(render=True, checkpointer=checkpointer)
+    winner = agent.evolve(render=False, checkpointer=checkpointer, parallel=True)
     print(type(winner))
     evaluate_agent(agent, env, episodes=2, render=True)
     # run(env, episodes=2)
+
+try:
+    eval_genome
+except NameError:
+    pass
+else:
+    raise AssertionError
 

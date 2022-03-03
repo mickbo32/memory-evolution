@@ -37,6 +37,7 @@ class TMaze(MazeForagingEnv):
                  vision_depth: float = .2,
                  vision_field_angle: float = 180.,
                  vision_resolution: int = 10,
+                 max_steps: Optional[int] = None,
                  fps: Optional[int] = None,
                  seed=None,
                  ) -> None:
@@ -78,6 +79,7 @@ class TMaze(MazeForagingEnv):
             vision_depth=vision_depth,
             vision_field_angle=vision_field_angle,
             vision_resolution=vision_resolution,
+            max_steps=max_steps,
             fps=fps,
             seed=seed,
         )

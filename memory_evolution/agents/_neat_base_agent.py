@@ -1,9 +1,11 @@
 from abc import ABC, abstractmethod
 from collections import defaultdict, Counter
 from collections.abc import Iterable, Sequence
+from functools import reduce
 import math
 import multiprocessing
 from numbers import Number, Real
+from operator import mul
 import os
 from typing import Optional, Union, Any, Literal
 from warnings import warn
@@ -23,6 +25,8 @@ from shapely.affinity import rotate, scale, translate
 from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiPoint, MultiPolygon
 from shapely.ops import unary_union, triangulate
 
+from memory_evolution.agents import BaseAgent
+from memory_evolution.agents.exceptions import EnvironmentNotSetError
 from memory_evolution.utils import (
     black_n_white, COLORS, convert_image_to_pygame, is_color,
     is_simple_polygon, is_triangle,
@@ -30,40 +34,29 @@ from memory_evolution.utils import (
 )
 from memory_evolution.utils import evaluate_agent
 from memory_evolution.utils import MustOverride, override
+from .exceptions import NotEvolvedError
 
 
-class NotEvolvedError(Exception):
-    """Raised when asking the genome of an agent which has never been
-    evolved before to perform an action."""
-
-    default_msg = (
-        "Agent has never been evolved before, "
-        "evolve the agent before asking for "
-        "any property of it."
-    )
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args)
-        if not self.args:
-            self.args = (self.default_msg,)
+def __low_level_func(*args, **kwargs):
+    raise RuntimeError("'__low_level_func()' used before assignment.")
 
 
-class EnvironmentNotSetError(Exception):
-    """Raised when an environment is needed
-    but an environment has not been set yet."""
-
-    default_msg = (
-        "An environment is needed but an environment"
-        " has not been set yet."
-    )
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args)
-        if not self.args:
-            self.args = (self.default_msg,)
+def __top_level_func(*args, **kwargs):
+    return __low_level_func(*args, **kwargs)
 
 
-class BaseNeatAgent(ABC):
+def _top_level_wrapper(low_level_func):
+    """'multiprocessing.Pool' needs the eval_genome function to be in module
+    scope, because needs to be pickable and only functions defined at the top
+    level of a module are pickable. Here a wrapper that wraps the low level
+    function and returns a top level function."""
+    global __low_level_func
+    assert '__low_level_func' in globals(), "'__low_level_func()' was not found in globals() of this file"
+    __low_level_func = low_level_func
+    return __top_level_func
+
+
+class BaseNeatAgent(BaseAgent, ABC):
 
     @classmethod
     @property
@@ -80,6 +73,8 @@ class BaseNeatAgent(ABC):
                 generate a genome from evolution (using evolution parameters
                 in 'config').
         """
+        super().__init__()
+
         # Load configuration.
         if isinstance(config, neat.config.Config):
             self.config = config
@@ -92,16 +87,36 @@ class BaseNeatAgent(ABC):
         self._phenotype = None
         if genome is not None:
             self.genome = genome
-        self._env = None
         self.node_names = {0: 'rotation', 1: 'forward'}  # {-1: 'A', -2: 'B', 0: 'A XOR B'}
-
-    def get_env(self) -> gym.Env:
-        if self._env is None:
-            raise EnvironmentNotSetError
-        return self._env
+        self._render = False
 
     def set_env(self, env: gym.Env) -> None:
-        self._env = env
+        """Extends base class method with the same name."""
+        config = 0
+        obs_size = reduce(mul, env.observation_space.shape, 1)
+        if self.config.genome_config.num_inputs != obs_size:
+            raise ValueError(
+                f"Network input ({self.config.genome_config.num_inputs}) "
+                f"doesn't fits 'env.observation_space' "
+                f"({env.observation_space.shape} -> size: {obs_size}), "
+                "change config.genome_config.num_inputs in your config file "
+                "or change environment; "
+                "config.genome_config.num_inputs should be equal to the total "
+                "size of 'env.observation_space.shape' (total size, "
+                "i.e. the sum of its dimensions)."
+            )
+        act_size = reduce(mul, env.action_space.shape, 1)
+        if len(env.action_space.shape) != 1:
+            raise ValueError("'len(env.action_space.shape)' should be 1;")
+        if self.config.genome_config.num_outputs != act_size:
+            raise ValueError(
+                f"Network output ({self.config.genome_config.num_outputs}) "
+                f"doesn't fits 'env.action_space'"
+                f"({env.action_space.shape} -> size: {act_size}), "
+                "change config.genome_config.num_outputs in your config file "
+                "or change environment."
+            )
+        super().set_env(env)
 
     @property
     def genome(self):
@@ -134,21 +149,22 @@ class BaseNeatAgent(ABC):
 
     # def get_eval_genome_func()
     # @classmethod
-    # todo: controlla sia giusto; fai che config può essere anche un ogetto neat
     def eval_genome(self, genome, config) -> float:
         """Use the Agent network phenotype and the discrete actuator force function."""
         assert genome is not None, self
         assert self._env is not None, self
         agent = type(self)(config, genome=genome)
-        agent.set_env(self.get_env())
+        agent.set_env(self.get_env())  # fixme: parallel execution should make a copy of env for each pool.
+        #                              # todo: is it doing this?
         assert agent._genome is not None, agent
         assert agent._phenotype is not None, agent
-        fitness = evaluate_agent(agent, self.get_env(), render=True)
+        fitness = evaluate_agent(agent, self.get_env(), render=self._render)
         return fitness
 
     @abstractmethod
     def action(self, observation: np.ndarray) -> np.ndarray:
-        """Takes an observation from the environment as argument and returns
+        """Overrides 'action()' method from base class.
+        Takes an observation from the environment as argument and returns
         a valid action.
 
         Args:
@@ -172,8 +188,9 @@ class BaseNeatAgent(ABC):
 
     @abstractmethod
     def reset(self) -> None:
-        """Reset the agent to an initial state ``t==0``."""
-        pass
+        """Extends 'action()' method from base class.
+        Reset the agent to an initial state ``t==0``."""
+        super().reset()
 
     def eval_genomes(self, genomes, config) -> None:
         for genome_id, genome in genomes:
@@ -210,7 +227,11 @@ class BaseNeatAgent(ABC):
         if parallel:
             if parallel_num_workers is None:
                 parallel_num_workers = multiprocessing.cpu_count()
-            pe = neat.ParallelEvaluator(parallel_num_workers, self.eval_genome, parallel_timeout)
+                assert parallel_num_workers > 0, parallel_num_workers
+            # 'multiprocessing.Pool' needs the eval_genome function to be in module scope
+            # (defined at the top level of a module, i.e. top level of the file)
+            eval_genome = _top_level_wrapper(self.eval_genome)
+            pe = neat.ParallelEvaluator(parallel_num_workers, eval_genome, parallel_timeout)
             winner = population.run(pe.evaluate, n)
         else:
             winner = population.run(self.eval_genomes, n)
@@ -242,7 +263,7 @@ class BaseNeatAgent(ABC):
                n=None,
                parallel=False,
                checkpointer: Union[None, int, float, neat.Checkpointer] = None,
-               render: bool = False,  # todo
+               render: bool = False,
                ):
         """Evolve a population of agents of the type of self and then return
         the best genome. The best genome is also saved in self. It returns also
@@ -253,9 +274,12 @@ class BaseNeatAgent(ABC):
         at the end of the evolution it returns a tuple with the winner
         and a neat.StatisticsReporter reporter with stats about the evolution.
         """
+        prev_rendering_option = self._render
+        self._render = render
         if render and parallel:
             raise ValueError("Parallel evolution cannot be rendered. "
                              "('render' and 'parallel' cannot be True at the same time)")
+
         # Load configuration.
         # Create the population, which is the top-level object for a NEAT run.
         # Add a stdout reporter to show progress in the terminal.
@@ -304,7 +328,7 @@ class BaseNeatAgent(ABC):
 
         # Display the winning genome.
         print('\nBest genome:\n{!s}'.format(winner))
-        self.visualize_genome("winner-genome.gv")
+        self.visualize_genome(winner, view=True, name='Best Genome', filename="winner-genome.gv")
 
         # Show output of the most fit genome against training data.
         print('\nOutput:')
@@ -322,6 +346,7 @@ class BaseNeatAgent(ABC):
                 f'neat-checkpoint-{last_cp_gen}')
             p.run(self.eval_genomes, 10)
 
+        self._render = prev_rendering_option
         self.genome = winner
         return winner, stats
 
