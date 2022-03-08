@@ -13,6 +13,7 @@ from memory_evolution.envs import *
 """
 TODO:
     * Use different seeds and test log the seed.
+    * assert type(Point(0, 0).buffer(1)) is Polygon, type(Point(0, 0).buffer(1))
 """
 
 
