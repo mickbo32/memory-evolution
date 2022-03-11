@@ -17,7 +17,7 @@ from shapely.affinity import rotate, scale, translate
 from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiPolygon
 from shapely.ops import unary_union, triangulate
 
-from memory_evolution.utils import COLORS, is_color, is_simple_polygon, Pos, convert_image_to_pygame
+from memory_evolution.geometry import is_simple_polygon, Pos
 from memory_evolution.utils import MustOverride, override
 
 from .maze_foraging import MazeForagingEnv, Agent, FoodItem

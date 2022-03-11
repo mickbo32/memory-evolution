@@ -27,11 +27,6 @@ from shapely.ops import unary_union, triangulate
 
 from memory_evolution.agents import BaseAgent
 from memory_evolution.agents.exceptions import EnvironmentNotSetError
-from memory_evolution.utils import (
-    black_n_white, COLORS, convert_image_to_pygame, is_color,
-    is_simple_polygon, is_triangle,
-    Pos, triangulate_nonconvex_polygon,
-)
 from memory_evolution.utils import evaluate_agent
 from memory_evolution.utils import MustOverride, override
 from .exceptions import NotEvolvedError
@@ -309,6 +304,7 @@ class BaseNeatAgent(BaseAgent, ABC):
         start_time_thread_time = time.thread_time_ns()
         print(f"Evolution started at", pd.Timestamp.utcnow().isoformat(' '))
         winner = self.evolve_population(p, n, parallel=parallel)
+        self.genome = winner
         end_time = time.time()
         end_time_perf_counter = time.perf_counter_ns()
         end_time_process_time = time.process_time_ns()
@@ -347,6 +343,5 @@ class BaseNeatAgent(BaseAgent, ABC):
             p.run(self.eval_genomes, 10)
 
         self._render = prev_rendering_option
-        self.genome = winner
         return winner, stats
 

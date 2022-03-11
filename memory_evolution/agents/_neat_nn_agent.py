@@ -21,11 +21,6 @@ from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiP
 from shapely.ops import unary_union, triangulate
 
 from memory_evolution.agents import BaseNeatAgent
-from memory_evolution.utils import (
-    black_n_white, COLORS, convert_image_to_pygame, is_color,
-    is_simple_polygon, is_triangle,
-    Pos, triangulate_nonconvex_polygon,
-)
 from memory_evolution.utils import evaluate_agent
 from memory_evolution.utils import MustOverride, override
 
@@ -41,7 +36,7 @@ class RnnNeatAgent(BaseNeatAgent):
         """Extends the base method."""
         super().action(observation)
         net = self.phenotype
-        action = net.activate(observation.reshape(-1))
+        action = net.activate(self.normalize_observation(observation))
         return np.asarray(action, dtype=self._env.action_space.dtype)
 
     def reset(self) -> None:

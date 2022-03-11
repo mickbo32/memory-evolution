@@ -28,8 +28,17 @@ if __name__ == '__main__':
         "%(asctime)s [%(processName)-12s %(process)-7d] [%(threadName)-12s %(thread)-7d] "
         "[%(levelname)-5s] %(module)-15s:  %(message)s")
 
+    os.makedirs('logs', exist_ok=True)
+
+    utcnow = pd.Timestamp.utcnow().strftime('%Y-%m-%d_%H%M%S.%f%z')
     rootLogger = logging.getLogger()
-    fileHandler = logging.FileHandler("mylogs.log")
+    fileHandler = logging.FileHandler(f"logs/mylogs_{utcnow}.log", mode='w')  # default mode='a'
+    fileHandler.setFormatter(logFormatter)
+    fileHandler.setLevel(logging.DEBUG)
+    rootLogger.addHandler(fileHandler)
+
+    rootLogger = logging.getLogger()
+    fileHandler = logging.FileHandler("logs/mylogs_all.log", mode='a')  # default mode='a'
     fileHandler.setFormatter(logFormatter)
     fileHandler.setLevel(logging.DEBUG)
     rootLogger.addHandler(fileHandler)
@@ -40,10 +49,16 @@ if __name__ == '__main__':
     rootLogger.addHandler(consoleHandler)
 
     PRINT_ALL_MESSAGES_ON_STDOUT = False
+    PRINT_ALL_INFO_PLUS_MESSAGES_ON_STDOUT = True
     if PRINT_ALL_MESSAGES_ON_STDOUT:
         consoleStdoutHandler = logging.StreamHandler(sys.stdout)
         consoleStdoutHandler.setFormatter(logging.Formatter("%(message)s"))  # default
         consoleStdoutHandler.setLevel(logging.NOTSET)
+        rootLogger.addHandler(consoleStdoutHandler)
+    elif PRINT_ALL_INFO_PLUS_MESSAGES_ON_STDOUT:
+        consoleStdoutHandler = logging.StreamHandler(sys.stdout)
+        consoleStdoutHandler.setFormatter(logging.Formatter("%(message)s"))  # default
+        consoleStdoutHandler.setLevel(logging.INFO)
         rootLogger.addHandler(consoleStdoutHandler)
 
     rootLogger.setLevel(logging.NOTSET)  # logging.WARNING default for root, logging.NOTSET default for others.
@@ -51,6 +66,7 @@ if __name__ == '__main__':
 # neat random seeding:
 random.seed(42)
 logging.debug(random.getstate())
+# Use random.setstate(state) to set an old state, where 'state' have been obtained from a previous call to getstate().
 
 
 class RandomAgent(BaseAgent):
@@ -173,11 +189,14 @@ if __name__ == '__main__':
     # env = TMaze(env_size=(1.5, 1.), fps=None, seed=42, n_food_items=50)
     # env = TMaze(.1001, env_size=(1.5, 1.), fps=None, seed=42)
     # env = TMaze(seed=42)
-    env = TMaze(seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
+    env = TMaze(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
+    # env = TMaze(seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
+    logging.debug(env._seed)  # todo: use a variable seed (e.g.: seed=42; env=TMaze(seed=seed); logging.debug(seed)) for assignation of seed, don't access the internal variable
     print('observation_space:',
           env.observation_space.shape,
           np.asarray(env.observation_space.shape).prod())
     check_env(env)  # todo: move in tests
+    print('Env checked.')
 
     # print(env.action_space)  # Discrete(4)
     # print(env.observation_space)  # Box([[[0] ... [255]]], (5, 5, 1), uint8)
@@ -206,15 +225,30 @@ if __name__ == '__main__':
                                      filename_prefix='neat-checkpoint-')
 
     agent.set_env(env)
-    winner = agent.evolve(render=False, checkpointer=checkpointer, parallel=True)
+    winner = agent.evolve(render=True, checkpointer=checkpointer, parallel=False)
+    # fixme: todo: parallel=True use the same seed for the environment in each process
+    #     (but for the agent is correct and different it seems)
     print(type(winner))
     evaluate_agent(agent, env, episodes=2, render=True)
     # run(env, episodes=2)
 
-try:
-    eval_genome
-except NameError:
-    pass
-else:
-    raise AssertionError
+'''
+Better efficiency:
 
+*   b163541 (HEAD -> main, origin/main, origin/HEAD) Merge branch 'continuous' into main Continuous environment and agents with evolution
+
+render = False
+Episode finished after 500 timesteps, for a total of 500 simulated seconds (in 7.13121553 actual seconds).
+
+render = True
+Episode finished after 500 timesteps, for a total of 500 simulated seconds (in 19.826593934 actual seconds).
+
+*   NOW
+
+render = False
+Episode finished after 500 timesteps, for a total of 500 simulated seconds (in 1.843639818 actual seconds).
+
+render = True
+Episode finished after 500 timesteps, for a total of 500 simulated seconds (in 15.735012616 actual seconds).
+
+'''

@@ -2,7 +2,7 @@ from collections import defaultdict, Counter
 from collections.abc import Sequence
 import math
 from numbers import Number, Real
-from typing import Optional, Union, Any
+from typing import Any, Literal, Optional, Union
 from warnings import warn
 import sys
 
@@ -17,7 +17,7 @@ from shapely.affinity import rotate, scale, translate
 from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiPolygon
 from shapely.ops import unary_union, triangulate
 
-from memory_evolution.utils import COLORS, is_color, is_simple_polygon, Pos, convert_image_to_pygame
+from memory_evolution.geometry import is_simple_polygon, Pos
 from memory_evolution.utils import MustOverride, override
 
 from .base_foraging import BaseForagingEnv, Agent, FoodItem
@@ -71,7 +71,7 @@ class MazeForagingEnv(BaseForagingEnv):
 
         self.border_color = self.outside_color
         self._borders = borders
-        self.__borders_coords_on_screen = [[self._get_point_env2win(pt) for pt in plg.boundary.coords]
+        self.__borders_coords_on_screen = [[self.get_point_env2win(pt) for pt in plg.boundary.coords]
                                            for plg in self._borders]
         self.__borders_union = unary_union(self._borders)
         for plg in self.__borders_coords_on_screen:
@@ -88,6 +88,7 @@ class MazeForagingEnv(BaseForagingEnv):
         # self._background = self._soil.copy()
         # assert self.env_space.contains(self._background)
         # self._background_img = convert_image_to_pygame(self._background)
+        # todo: do it, but if it is not used you can remove it
 
     def _draw_env(self, screen) -> None:
         # draw borders: (inefficient because it does this each rendering loop)
@@ -124,9 +125,6 @@ class MazeForagingEnv(BaseForagingEnv):
         info['env_info']['borders'] = self._borders
         return info
 
-    def is_valid_position(self, pos: Union[Point, Polygon]) -> bool:
-        return super().is_valid_position(pos)
-        # and unary_union(self._borders).disjoint(pos)
-        # borders check is not needed since the self._platform is updated
-        # by removing borders from it in self.__init__()
+    def is_valid_position(self, pos, item: Literal['agent', 'food'], is_env_pos: bool = True) -> bool:
+        return super().is_valid_position(pos, item, is_env_pos)
 

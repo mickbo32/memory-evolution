@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from collections import defaultdict, Counter
 from collections.abc import Iterable, Sequence
+import logging
 import math
 import multiprocessing
 from numbers import Number, Real
@@ -61,18 +62,23 @@ def evaluate_agent(agent, env: gym.Env,
     fitnesses = []
     for i_episode in range(episodes):
         if render:
-            print(f'Starting episode #{i_episode} ...')
+            msg = f'Starting episode #{i_episode} ...'
+            logging.debug(msg)
+            print(msg)
         start_time_episode = time.perf_counter_ns()
         # Reset env and agent:
-        observation = env.reset()
+        observation, info = env.reset(return_info=True)
         agent.reset()
         if isinstance(env, memory_evolution.envs.BaseForagingEnv):
+            env_agent = info['state']['agent']
+            first_agent_pos = env_agent.pos
+            # check that agent position change from one episode to the other:
+            # note: there is a chance that could be the same, but should be very low.
             if 'prev_episode_agent_pos' in locals():
-                assert env._agent.pos != prev_episode_agent_pos  # there is a chance that could be the same, but should be very low.
+                assert env_agent.pos != prev_episode_agent_pos
             else:
                 assert i_episode == 0, i_episode
-            prev_episode_agent_pos = env._agent.pos
-            assert env._agent.pos == prev_episode_agent_pos
+            prev_episode_agent_pos = env_agent.pos
         assert env.t == 0., env.t
         fitness = 0.0  # food collected
         if render:
@@ -96,13 +102,15 @@ def evaluate_agent(agent, env: gym.Env,
                 assert env.step_count == i + 1, (env.step_count, i)
             fitness += reward
             if render:
-                # print("Observation:", observation, sep='\n')
-                print("Action:", action, sep=' ')
-                # print(info['state']['agent'])
-                # print(len(info['state']['food_items']), info['state']['food_items'])
-                # pprint(info)
+                logging.debug(f"Observation hash: {hash(observation.tobytes())}")
+                logging.debug(f"Action hash: {hash(action.tobytes())}")
+                # # print("Observation:", observation, sep='\n')
+                # print("Action:", action, sep=' ')
+                # # print(info['state']['agent'])
+                # # print(len(info['state']['food_items']), info['state']['food_items'])
+                # # pprint(info)
                 env.render()
-                print()
+                # print()
             i += 1
         end_t = env.t
         end_time_episode = time.perf_counter_ns()
@@ -113,16 +121,29 @@ def evaluate_agent(agent, env: gym.Env,
             #  use them only for asserts).
         if isinstance(env, memory_evolution.envs.BaseForagingEnv):
             assert fitness == int(fitness), (fitness, int(fitness))
-            fitness += env.get_agent_distance_to_nearest_food_item() / max(env._env_size) * .99
-            fitness = (fitness, env.get_agent_distance_to_nearest_food_item())  # todo: neat should be able to take tuples as fitness
+            end_agent_pos = info['state']['agent'].pos
+            agent_distance_from_start = memory_evolution.geometry.euclidean_distance(first_agent_pos, end_agent_pos)
+            msg = f"agent_distance_from_start: {agent_distance_from_start}"
+            # print(f"agent_distance_from_start: {agent_distance_from_start}")
+            logging.debug(f"agent_distance_from_start: {agent_distance_from_start}")
+            # todo: neat should be able to take tuples as fitness
+            # fitness = (fitness, agent_distance_from_start)
+            fitness += agent_distance_from_start / max(env.env_size) * .99
+            msg = f"fitness: {fitness}"
+            # print(msg)
+            logging.debug(msg)
         fitnesses.append(fitness)
         if done:
+            msg = (
+                f"{agent} fitness {fitness}\n"
+                f"Episode finished after {i} timesteps"
+                f", for a total of {end_t} simulated seconds"
+                f" (in {(end_time_episode - start_time_episode) / 10 ** 9} actual seconds)."
+                #"\n"
+            )
+            logging.debug('\n\t' + '\n\t'.join(msg.split('\n')))
             if render:
-                print("{0} fitness {1}".format(agent, fitness))
-                print(f"Episode finished after {i} timesteps"
-                      f", for a total of {end_t} simulated seconds"
-                      f" (in {(end_time_episode - start_time_episode) / 10 ** 9} actual seconds).")
-                print()
+                print(msg, end='\n\n')
         else:
             raise RuntimeError(
                 f"Episode has not finished after {i} timesteps"
