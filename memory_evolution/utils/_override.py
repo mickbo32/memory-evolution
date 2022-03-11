@@ -52,3 +52,4 @@ class MustOverrideMeta(type):
 
 class MustOverride(metaclass=MustOverrideMeta):
     pass
+

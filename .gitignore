@@ -1,4 +1,9 @@
 
+# my
+/_prove/
+*.log
+logs/
+
 
 # pycharm
 .idea/
