@@ -28,34 +28,12 @@ class MazeForagingEnv(BaseForagingEnv):
 
     def __init__(self,
                  borders: list[Polygon],
-                 window_size: Union[int, Sequence[int]] = 640,  # (640, 480),
-                 env_size: Union[float, Sequence[float]] = 1.,
-                 n_food_items: int = 3,
-                 rotation_step: float = 20,
-                 forward_step: float = .01,
-                 agent_size: float = .05,
-                 food_size: float = .05,
-                 vision_depth: float = .2,
-                 vision_field_angle: float = 180.,
-                 vision_resolution: int = 10,
-                 max_steps: Optional[int] = None,
-                 fps: Optional[int] = None,
-                 seed=None,
+                 *args,
+                 **kwargs
                  ) -> None:
         super().__init__(
-            window_size=window_size,
-            env_size=env_size,
-            n_food_items=n_food_items,
-            rotation_step=rotation_step,
-            forward_step=forward_step,
-            agent_size=agent_size,
-            food_size=food_size,
-            vision_depth=vision_depth,
-            vision_field_angle=vision_field_angle,
-            vision_resolution=vision_resolution,
-            max_steps=max_steps,
-            fps=fps,
-            seed=seed,
+            *args,
+            **kwargs
         )
 
         if not all(isinstance(plg, Polygon) for plg in borders):

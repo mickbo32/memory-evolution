@@ -130,7 +130,6 @@ class BaseNeatAgent(BaseAgent, ABC):
         self._genome = genome
         net = self.phenotype_class.create(self._genome, self.config)
         self._phenotype = net
-        return self._genome
 
     @property
     def phenotype(self):
@@ -154,7 +153,8 @@ class BaseNeatAgent(BaseAgent, ABC):
         #                              # todo: is it doing this?
         assert agent._genome is not None, agent
         assert agent._phenotype is not None, agent
-        fitness = evaluate_agent(agent, self.get_env(), render=self._render)
+        fitness = evaluate_agent(agent, self.get_env(),
+                                 episodes=2, render=self._render)
         return fitness
 
     @abstractmethod
@@ -354,7 +354,7 @@ class BaseNeatAgent(BaseAgent, ABC):
             print("Restoring checkpoint and running up to 10 generations:")
             p = neat.Checkpointer.restore_checkpoint(
                 make_filename(f'neat-checkpoint-{last_cp_gen}'))
-            p.run(self.eval_genomes, 10)
+            p.run(self.eval_genomes, max(1, min(10, last_cp_gen // 3)))
 
         self._render = prev_rendering_option
         return winner, stats

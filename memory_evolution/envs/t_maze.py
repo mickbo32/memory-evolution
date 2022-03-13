@@ -29,17 +29,8 @@ class TMaze(MazeForagingEnv):
                  corridor_width: Real = .2,
                  window_size: Union[int, Sequence[int]] = 640,  # (640, 480),
                  env_size: Union[float, Sequence[float]] = 1.,
-                 n_food_items: int = 3,
-                 rotation_step: float = 20,
-                 forward_step: float = .01,
-                 agent_size: float = .05,
-                 food_size: float = .05,
-                 vision_depth: float = .2,
-                 vision_field_angle: float = 180.,
-                 vision_resolution: int = 10,
-                 max_steps: Optional[int] = None,
-                 fps: Optional[int] = None,
-                 seed=None,
+                 *args,
+                 **kwargs
                  ) -> None:
 
         n_channels = 3
@@ -68,20 +59,11 @@ class TMaze(MazeForagingEnv):
         borders = [Polygon(plg) for plg in borders]
 
         super().__init__(
-            borders=borders,
-            window_size=window_size,
-            env_size=env_size,
-            n_food_items=n_food_items,
-            rotation_step=rotation_step,
-            forward_step=forward_step,
-            agent_size=agent_size,
-            food_size=food_size,
-            vision_depth=vision_depth,
-            vision_field_angle=vision_field_angle,
-            vision_resolution=vision_resolution,
-            max_steps=max_steps,
-            fps=fps,
-            seed=seed,
+            borders,
+            window_size,
+            env_size,
+            *args,
+            **kwargs
         )
 
         assert tuple(up_right) == self._env_size

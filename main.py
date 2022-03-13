@@ -212,8 +212,10 @@ if __name__ == '__main__':
     # env = TMaze(env_size=(1.5, 1.), fps=None, seed=42, n_food_items=50)
     # env = TMaze(.1001, env_size=(1.5, 1.), fps=None, seed=42)
     # env = TMaze(seed=42)
+    # env = TMaze(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)  # todo: use in tests
+    # env = BaseForagingEnv(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7) # todo: use in tests
     env = TMaze(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
-    #env = BaseForagingEnv(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
+    # env = BaseForagingEnv(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
     # env = TMaze(seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
     logging.debug(env._seed)  # todo: use a variable seed (e.g.: seed=42; env=TMaze(seed=seed); logging.debug(seed)) for assignation of seed, don't access the internal variable
     print('observation_space:',
@@ -251,7 +253,7 @@ if __name__ == '__main__':
                                          UTCNOW + '_' + 'neat-checkpoint-'))
 
     agent.set_env(env)
-    winner = agent.evolve(render=1, checkpointer=checkpointer, parallel=0,
+    winner = agent.evolve(render=0, checkpointer=checkpointer, parallel=1,
                           filename_tag=UTCNOW + '_', path_dir='logs')
     # fixme: todo: parallel=True use the same seed for the environment in each process
     #     (but for the agent is correct and different it seems)
@@ -267,6 +269,7 @@ if __name__ == '__main__':
 
 '''
 Better efficiency:
+env = TMaze(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
 (parallel = False)
 
 * b163541 (HEAD -> main, origin/main, origin/HEAD) Merge branch 'continuous' into main Continuous environment and agents with evolution
@@ -293,6 +296,13 @@ by using only the integrated screen of the pc the rendering time goes down to 19
 
 * NOW
 
-TODO test
+render = False
+Episode finished after 500 timesteps, for a total of 500 simulated seconds (in 1.6946048 actual seconds).
+render = False;parallel=True
+Episode finished after 500 timesteps, for a total of 500 simulated seconds (in 3.641211265 actual seconds).
+
+render = True
+Episode finished after 500 timesteps, for a total of 500 simulated seconds (in 2.768054353 actual seconds).
 
 '''
+

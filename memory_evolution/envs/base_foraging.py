@@ -1,8 +1,10 @@
 from collections import defaultdict, Counter
 from collections.abc import Sequence
+from functools import reduce
 import logging
 import math
 from numbers import Number, Real
+from operator import mul
 from typing import Literal, Optional, Union, Any
 from warnings import warn
 import sys
@@ -294,7 +296,7 @@ class FoodItem(CircleItem):
         # self._self_repr_properties.append(NOTHING)
 
 
-# todo: rename simply
+# todo: rename simply ForagingEnv
 class BaseForagingEnv(gym.Env, MustOverride):
     """Custom Environment that follows gym interface,
     it develops an agent moving in an environment in search for foods items.
@@ -319,6 +321,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
                  vision_depth: float = .2,
                  vision_field_angle: float = 180.,
                  vision_resolution: int = 10,
+                 init_agent_position: Optional[Pos] = None,
+                 init_food_positions: Optional[list] = None,
                  max_steps: Optional[int] = None,
                  fps: Optional[int] = None,
                  seed=None,  # todo: int or SeedSequence
@@ -342,6 +346,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
                     i.e. the number of observation points will be
                     ``vision_resolution * self.vision_field_n_angles``,
                     the observation shape can be accessed by ``self.observation_space.shape``.
+            init_food_positions: if provided should be a list of ``n_food_items`` valid
+                    food item positions (in the environment space). If ``None``,
+                    ``n_food_items`` food items are generated in random positions.
             max_steps: after this number of steps the environment is done (the
                     ``max_steps``_th step it will return done); if ``None``
                     continue forever (done always False).
@@ -401,6 +408,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._vision_point_win_radius = max(self._env2win_resize_factor * min(self._env_size) * .005, 1)
         self._vision_point_transparency = self.__get_vision_point_transparency(
             self._vision_point_win_radius, self._env2win_resize_factor * vision_step)
+        # self._vision_points_group = pg.sprite.Group()  # all points are the same, I don't care which one goes where, thus the group is sufficient, I don't need an extra list.
 
         self._platform = Polygon((Point(0, 0), Point(0, self._env_size[1]),
                                   Point(*self._env_size), Point(self._env_size[0], 0)))
@@ -461,6 +469,23 @@ class BaseForagingEnv(gym.Env, MustOverride):
             self._compute_and_set_valid_positions(self._platform)
 
         # self.__observation = None  # todo
+
+        if init_agent_position is not None:
+            pos = init_agent_position
+            if not self.is_valid_position(pos, 'agent', is_env_pos=True):
+                raise ValueError(f"agent position in 'init_agent_position'"
+                                 f" is not valid: {pos}")
+        self._init_agent_position = init_agent_position
+        if init_food_positions is not None:
+            if len(init_food_positions) != self._n_food_items:
+                raise ValueError(f"{self._n_food_items} food item valid positions expected,"
+                                 f" but 'init_food_positions' contains "
+                                 f"{len(init_food_positions)} positions.")
+            for pos in init_food_positions:
+                if not self.is_valid_position(pos, 'food', is_env_pos=True):
+                    raise ValueError(f"food item positions in 'init_food_positions'"
+                                     f" is not valid: {pos}")
+        self._init_food_positions = init_food_positions
 
         # Rendering:
         self._rendering = False  # rendering never used
@@ -683,8 +708,6 @@ class BaseForagingEnv(gym.Env, MustOverride):
         """
         return get_point_win2env(point, self._window_size, self._env_size)
 
-    # todo: this is not using Group().draw() yet. Do it! (test it before and after to see if it improve,
-    #  get worst or stay the same)
     @override
     def _draw_env(self, screen) -> None:
         """Draw the environment in the screen.
@@ -694,19 +717,11 @@ class BaseForagingEnv(gym.Env, MustOverride):
         """
 
         # draw food items:
-        for food in self._food_items:
-            pg.draw.circle(screen,
-                           self.food_color,
-                           self.get_point_env2win(food.pos),
-                           food.radius * self._env2win_resize_factor)
+        self._food_items_group.draw(screen)
 
         # draw agent:
         # agent is drawn later than food items, so that it is shown on top.
-        # todo: use Sprites and update the position without rewriting all the screen again
-        pg.draw.circle(screen,
-                       self.agent_color,
-                       self.get_point_env2win(self._agent.pos),
-                       self._agent.radius * self._env2win_resize_factor)
+        self._agent_group.draw(screen)
 
         # draw field of view of the agent:
         r = self._vision_point_win_radius
@@ -716,7 +731,13 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 # pg.draw.circle(screen, COLORS['blue'], pt.coords[0], r)
                 circle = pg.Surface((r * 2, r * 2), pg.SRCALPHA)
                 pg.draw.circle(circle, (*COLORS['blue'], self._vision_point_transparency), (r, r), r)
-                screen.blit(circle, (pt[0] - r, pt[1] - r))  # todo: put them all in a group and draw only at the end: is it faster?
+                screen.blit(circle, (pt[0] - r, pt[1] - r))
+        # # todo: put them all in a group and draw only at the end: is it faster?
+        # points = self._get_observation_points().reshape((-1, 2))
+        # assert len(self._vision_points_group) == len(points), (len(self._vision_points_group), len(points))
+        # for vpt, pt in zip(self._vision_points_group.sprites(), points):
+        #     if 0 <= pt[0] <= self._env_size[0] and 0 <= pt[1] <= self._env_size[1]:
+        #         vpt.pos = pt  # not all points are updated; fixme (if it is worth it, but it can get slower, thus not worth it if that is the case)
 
     @override
     def _init_state(self) -> None:
@@ -728,9 +749,20 @@ class BaseForagingEnv(gym.Env, MustOverride):
             self._env_img.get_size(), self._env_img_size)
 
         # get random init positions:
-        positions = self._get_random_non_overlapping_positions(
-            1 + self._n_food_items,
-            [self._food_size / 2] * self._n_food_items + [self._agent_size / 2])
+        n_random_positions = 0
+        positions = []
+        if self._init_agent_position is None:
+            n_random_positions += 1
+        else:
+            positions.append(self._init_agent_position)
+        if self._init_food_positions is None:
+            n_random_positions += self._n_food_items
+        if n_random_positions:
+            positions.extend(self._get_random_non_overlapping_positions(
+                n_random_positions,
+                [self._food_size / 2] * self._n_food_items + [self._agent_size / 2]))
+        if self._init_food_positions is not None:
+            positions.extend(self._init_food_positions)
 
         # init agent in a random position:
         pos = positions.pop()
@@ -739,6 +771,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
             self._agent.kill()
         self._agent = Agent(pos, self._agent_size, head_direction=hd, color=self.agent_color, env=self)
         # print(self._agent_size, self._agent.radius, str(self._agent.pos))
+        self._agent_group.empty()  # remove all previous food item sprites from the group
+        self._agent_group.add(self._agent)
 
         # init food items:
         self._food_items = []
@@ -746,8 +780,19 @@ class BaseForagingEnv(gym.Env, MustOverride):
             self._food_items.append(FoodItem(positions.pop(), self._food_size, self.food_color, env=self))
         assert isinstance(self._food_items[0], pg.sprite.Sprite)
         self._food_items_group.empty()  # remove all previous food item sprites from the group
-        self._food_items_group = pg.sprite.Group(*self._food_items)
+        self._food_items_group.add(*self._food_items)
         assert len(self._food_items) == len(self._food_items_group)
+
+        # init field of view of the agent:
+        # # init vision points
+        # # self._vision_points_group.empty()  # remove all previous food item sprites from the group
+        # # r = self._vision_point_win_radius
+        # # vision_points = [CircleItem(self._agent.pos,  # initialize them all in a valid position: the agent position.
+        # #                             r*2,
+        # #                             (*COLORS['blue'], self._vision_point_transparency),
+        # #                             env=self)
+        # #                  for _ in range(reduce(mul, self.observation_space.shape, 1))]
+        # # self._vision_points_group.add(*vision_points)
 
         # self.debug_info['_init_state']
 
@@ -830,7 +875,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 remove_food.add(idx)
                 food_collected += 1
                 self.food_items_collected += 1
-                logging.info(f'Food collected.    [Total food items collected until now: {self.food_items_collected}]')
+                logging.log(logging.DEBUG + 3,
+                            f'Food collected.    [Total food items collected until now: {self.food_items_collected}]')
         for j in remove_food:
             food = self._food_items[j]
             food.kill()  # remove from all groups
