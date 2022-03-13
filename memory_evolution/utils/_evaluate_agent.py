@@ -27,7 +27,8 @@ from shapely.ops import unary_union, triangulate
 import memory_evolution
 
 
-def evaluate_agent(agent, env: gym.Env,
+def evaluate_agent(agent,
+                   env: gym.Env,
                    episodes: int = 1,
                    max_actual_time_per_episode: Optional[Union[int, float]] = None,
                    episodes_fitness_aggr_func: Literal['mean', 'max', 'min'] = 'min',
@@ -61,9 +62,9 @@ def evaluate_agent(agent, env: gym.Env,
     time_step = env.time_step  # todo: non serve, basta fare env.t - prev_env_t; togli time_step da env e chiama env.dt
     fitnesses = []
     for i_episode in range(episodes):
+        msg = f'Starting episode #{i_episode} ...'
+        logging.debug(msg)
         if render:
-            msg = f'Starting episode #{i_episode} ...'
-            logging.debug(msg)
             print(msg)
         start_time_episode = time.perf_counter_ns()
         # Reset env and agent:
@@ -151,6 +152,6 @@ def evaluate_agent(agent, env: gym.Env,
                 f" (in {(end_time_episode - start_time_episode) / 10 ** 9} actual seconds).")
     final_fitness = getattr(np, episodes_fitness_aggr_func)(fitnesses)
     # env.close()  # use it only in main, otherwise it will be closed and
-    # opened again each time it is evaluated and it slows down everything.
+    # opened again each time it is evaluated.
     return final_fitness
 

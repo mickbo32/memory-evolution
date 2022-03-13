@@ -12,15 +12,16 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.random import SeedSequence, default_rng
-import pygame
+import pygame as pg
 from shapely.affinity import rotate, scale, translate
 from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiPolygon
 from shapely.ops import unary_union, triangulate
 
 from memory_evolution.geometry import is_simple_polygon, Pos
+from memory_evolution.utils import convert_image_to_pygame
 from memory_evolution.utils import MustOverride, override
 
-from .base_foraging import BaseForagingEnv, Agent, FoodItem
+from .base_foraging import BaseForagingEnv, Agent, FoodItem, get_valid_item_positions_mask
 
 
 class MazeForagingEnv(BaseForagingEnv):
@@ -41,18 +42,6 @@ class MazeForagingEnv(BaseForagingEnv):
                  fps: Optional[int] = None,
                  seed=None,
                  ) -> None:
-
-        if not all(isinstance(plg, Polygon) for plg in borders):
-            raise TypeError("'borders' should be a list of 'Polygon' objects")
-        if not all(plg.is_valid for plg in borders):
-            raise ValueError("'borders' contain a non-valid polygon object")
-        if not all(isinstance(plg.boundary, LineString) and not list(plg.interiors)
-                   for plg in borders):
-            # not MultiLineString boundary
-            # empty interiors, no holes
-            raise ValueError("'borders' contain a complex polygon object, "
-                             "only simple polygons are allowed")
-
         super().__init__(
             window_size=window_size,
             env_size=env_size,
@@ -69,6 +58,17 @@ class MazeForagingEnv(BaseForagingEnv):
             seed=seed,
         )
 
+        if not all(isinstance(plg, Polygon) for plg in borders):
+            raise TypeError("'borders' should be a list of 'Polygon' objects")
+        if not all(plg.is_valid for plg in borders):
+            raise ValueError("'borders' contain a non-valid polygon object")
+        if not all(isinstance(plg.boundary, LineString) and not list(plg.interiors)
+                   for plg in borders):
+            # not MultiLineString boundary
+            # empty interiors, no holes
+            raise ValueError("'borders' contain a complex polygon object, "
+                             "only simple polygons are allowed")
+
         self.border_color = self.outside_color
         self._borders = borders
         self.__borders_coords_on_screen = [[self.get_point_env2win(pt) for pt in plg.boundary.coords]
@@ -84,17 +84,24 @@ class MazeForagingEnv(BaseForagingEnv):
                              f"(or there is a problem with self._platform: "
                              f"{(self._platform.wkt, self._platform.boundary)})")
 
-        # # update background np.ndarray and background_img pygame image
-        # self._background = self._soil.copy()
-        # assert self.env_space.contains(self._background)
-        # self._background_img = convert_image_to_pygame(self._background)
-        # todo: do it, but if it is not used you can remove it
+        # update background np.ndarray and background_img pygame image
+        background = self._soil.copy()
+        borders_mask = get_valid_item_positions_mask(self._platform, 0., self.window_size, self.env_size)
+        background = convert_image_to_pygame(background)
+        assert self._soil.shape[1::-1] == background.get_size()
+        self._background_img = borders_mask.to_surface(
+            background,
+            setsurface=background,
+            unsetcolor=self.border_color
+        )
+
+        # update valid positions:
+        # valid positions:
+        self._compute_and_set_valid_positions(self._platform)
 
     def _draw_env(self, screen) -> None:
-        # draw borders: (inefficient because it does this each rendering loop)
-        # todo: do it efficiently
-        for plg in self.__borders_coords_on_screen:
-            pygame.draw.polygon(screen, self.border_color, plg)
+        # draw stuff:
+        # pass
 
         # draw agent and food items later, so you can see them above borders
         # if for some reasons they are plotted outside the maze, but mainly you can see
@@ -111,11 +118,8 @@ class MazeForagingEnv(BaseForagingEnv):
         return super()._get_observation()
 
     def _get_point_color(self, point):
-        col = super()._get_point_color(point)
-        if col is self.outside_color and col is not self.border_color:
-            if self.__borders_union.covers(point):
-                col = self.border_color
-        return col
+        # base method it reads the env_img, thus if you update that in the init it is enough.
+        return super()._get_point_color(point)
 
     def _is_done(self) -> bool:
         return super()._is_done()

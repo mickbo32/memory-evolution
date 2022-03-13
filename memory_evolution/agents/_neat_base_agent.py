@@ -7,6 +7,7 @@ import multiprocessing
 from numbers import Number, Real
 from operator import mul
 import os
+import pickle
 from typing import Optional, Union, Any, Literal
 from warnings import warn
 import sys
@@ -259,6 +260,8 @@ class BaseNeatAgent(BaseAgent, ABC):
                parallel=False,
                checkpointer: Union[None, int, float, neat.Checkpointer] = None,
                render: bool = False,
+               filename_tag: str = '',
+               path_dir: str = '',
                ):
         """Evolve a population of agents of the type of self and then return
         the best genome. The best genome is also saved in self. It returns also
@@ -319,19 +322,30 @@ class BaseNeatAgent(BaseAgent, ABC):
               f" (for a total of {pd.Timedelta(nanoseconds=tot_time_process_time)!s} and"
               f" {pd.Timedelta(nanoseconds=tot_time_thread_time)!s}).")
 
+        # Use this function to create filenames.
+        def make_filename(filename):
+            return os.path.join(path_dir, filename_tag + filename)
+
+        # Pickle winner.
+        with open(make_filename("genome.pickle"), "wb") as f:
+            pickle.dump(winner, f)
+
         # Display stats on the evolution performed.
-        self.visualize_evolution(stats, stats_ylog=True, view=True)
+        self.visualize_evolution(stats, stats_ylog=True, view=True,
+                                 filename_stats=make_filename("fitness.svg"),
+                                 filename_speciation=make_filename("speciation.svg"))
 
         # Display the winning genome.
         print('\nBest genome:\n{!s}'.format(winner))
-        self.visualize_genome(winner, view=True, name='Best Genome', filename="winner-genome.gv")
+        self.visualize_genome(winner, view=True, name='Best Genome', filename=make_filename("winner-genome.gv"))
 
         # Show output of the most fit genome against training data.
         print('\nOutput:')
         print('rendering one episode with the best agent...')
         evaluate_agent(self, self.get_env(), render=True)
 
-        if checkpointer is not None:
+        # Try to reload population from a saved checkpointer and run evolution for few generations.
+        if checkpointer is not None and checkpointer.last_generation_checkpoint != -1:
             last_cp_gen = checkpointer.last_generation_checkpoint
             last_cp_time = checkpointer.last_time_checkpoint
             last_cp_time_from_start = last_cp_time - start_time
@@ -339,7 +353,7 @@ class BaseNeatAgent(BaseAgent, ABC):
                   f" after {last_cp_time_from_start} seconds from start.")
             print("Restoring checkpoint and running up to 10 generations:")
             p = neat.Checkpointer.restore_checkpoint(
-                f'neat-checkpoint-{last_cp_gen}')
+                make_filename(f'neat-checkpoint-{last_cp_gen}'))
             p.run(self.eval_genomes, 10)
 
         self._render = prev_rendering_option

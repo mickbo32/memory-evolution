@@ -53,7 +53,7 @@ def convert_image_to_pygame(image, format_: IMAGE_FORMAT = "RGB"):
         return pg.image.frombuffer(image.tobytes(), image.shape[1::-1], format_)
     else:
         raise NotImplementedError(f"{type(image)!r}"
-                                  + (f", dtype={image.dtype!r}"
+                                  + (f", dtype={image.dtype!r} ('np.uint8' is supported instead)"
                                      if isinstance(image, np.ndarray)
                                      else ''))
 

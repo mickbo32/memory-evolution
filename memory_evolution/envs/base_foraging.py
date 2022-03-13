@@ -102,40 +102,6 @@ def get_point_win2env(point, window_size, env_size
     return point
 
 
-'''
-def get_valid_item_positions_mask(platform: Polygon, item_radius: Real, 
-                                  window_size: tuple, env_size: tuple
-                                  ) -> pg.mask.Mask:
-    """If ``valid_positions`` is provided, then check only if valid spots
-    are still valid and updated ``valid_positions``.
-    It returns ``valid_positions``.
-    If ``valid_positions`` is not provided, ``window_size`` should be
-    provided, and vice versa. If both are provided together
-    an exception will be raised.
-
-    Note:
-    Expensive method, use this only for init purposes;
-    e.g.:
-    in __init__():
-    self._valid_agent_positions = self._get_valid_item_positions(self._agent.win_radius, self._window_size);
-    """
-    if sum((window_size is None, valid_positions is None)) == 1:
-        raise ValueError("One, and only one, among 'valid_positions' "
-                         "and 'window_size' arguments should be provided "
-                         "(i.e. different from None).")
-    if valid_positions is None:
-        valid_positions = pg.mask.Mask(window_size)
-    assert valid_positions.get_at((0, 0)) == 0
-    for j in range(window_size[0]):
-        x = j + .5
-        for i in range(window_size[1]):
-            y = i + .5
-            if valid_positions.get_at((x, y)):
-                ...
-                    valid_positions.set_at((x, y), 0)
-    ...
-'''
-
 def get_valid_item_positions_mask(platform: Polygon, item_radius: Real,
                                   window_size: tuple, env_size: tuple
                                   ) -> pg.mask.Mask:
@@ -328,11 +294,17 @@ class FoodItem(CircleItem):
         # self._self_repr_properties.append(NOTHING)
 
 
+# todo: rename simply
 class BaseForagingEnv(gym.Env, MustOverride):
     """Custom Environment that follows gym interface,
     it develops an agent moving in an environment in search for foods items.
 
-    Food item is collected when: "food collected if the agent intersects the central point of the food"
+    Food item is collected when the agent step upon (or touches) the center of the food item.
+
+    If this class is subclassed, in the __init__() method of the subclass it
+    should be created a correct ``self._background_img`` for the environment
+    and it should be called ``self._compute_and_set_valid_positions(platform)`` to compute
+    the correct valid positions for the new class.
     """
     metadata = {'render.modes': ['human']}
 
@@ -348,7 +320,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                  vision_field_angle: float = 180.,
                  vision_resolution: int = 10,
                  max_steps: Optional[int] = None,
-                 fps: Optional[int] = None,  # 60 or 30  # todo
+                 fps: Optional[int] = None,
                  seed=None,  # todo: int or SeedSequence
                  ) -> None:
         """Inits environment
@@ -441,9 +413,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self.t = None
 
         self.step_count = None
-        self._agent = None
-        self._food_items = []
-        self.__food_items_group = pg.sprite.Group()
+        self._agent = None  # todo: probably this is not needed
+        self._agent_group = pg.sprite.GroupSingle()  # todo: call this _agent
+        self._food_items = []  # todo: probably this is not needed
+        self._food_items_group = pg.sprite.Group()  # todo: call this _food_items
         self._env_img = None  # todo: make state (env_state) an object
         self.__get_observation_points_cache = {}
         self.food_items_collected = None
@@ -474,15 +447,41 @@ class BaseForagingEnv(gym.Env, MustOverride):
         assert is_color(bgd_col), bgd_col
         self._soil = np.ones(self.env_space.shape, dtype=self.env_space.dtype) * bgd_col
         assert self.env_space.contains(self._soil)  # note: this check also dtype
-        background = self._soil.copy()
-        assert self.env_space.contains(background)
-        self._background_img = convert_image_to_pygame(background)
 
-        # valid positions:
+        # print(type(self), type(self) is BaseForagingEnv)
+        if type(self) is BaseForagingEnv:
+            # do it here only if you are using it and not subclassing,
+            # otherwise do it in the __init__ of the subclass.
+
+            # background img:
+            background = self._soil.copy()
+            self._background_img = convert_image_to_pygame(background)
+
+            # valid positions:
+            self._compute_and_set_valid_positions(self._platform)
+
+        # self.__observation = None  # todo
+
+        # Rendering:
+        self._rendering = False  # rendering never used
+        self._rendering_reset_request = True  # ask the rendering engine to reset the screen
+        # init pygame module:
+        pg.init()
+        self._screen = None
+        # self._env_surface = pg.Surface(self._env_size)
+
+        # Other control variables:
+        self.__has_been_ever_reset = False
+
+    def _compute_and_set_valid_positions(self, platform):
+        """Call this method in self.__init__()
+
+        note: this function has side effects (it sets
+        self._valid_agent_positions and self._valid_food_item_positions).
+        """
         # self._valid_positions = (background == bgd_col)
         # assert self._valid_positions.dtype == bool
 
-        platform = self._platform
         self._valid_agent_positions = get_valid_item_positions_mask(
             platform, self._agent_size / 2, self._window_size, self._env_size)
         self._valid_food_item_positions = get_valid_item_positions_mask(
@@ -492,19 +491,6 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # plt.show()
         # plt.matshow(convert_pg_mask_to_array(self._valid_food_item_positions).astype(int))
         # plt.show()
-
-        # self.__observation = None  # todo
-
-        # Rendering:
-        self._rendering = False  # rendering never used
-        self._rendering_reset_request = True  # ask the rendering engine to reset the screen
-        # init pygame module:  # it is done only is self.render() is called at least once (see self.render() method).
-        # pg.init()  # it is done only is self.render() is called at least once (see self.render() method).
-        self._screen = None
-        # self._env_surface = pg.Surface(self._env_size)
-
-        # Other control variables:
-        self.__has_been_ever_reset = False
 
     @property
     def env_size(self):
@@ -572,6 +558,19 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self.t = 0
         self.food_items_collected = 0
 
+        msg = (
+            "Custom subclass should create a 'self._background_img'"
+            " in the __init__() method."
+        )
+        assert hasattr(self, '_background_img'), msg
+        msg = (
+            "Custom subclass should call 'self._compute_and_set_valid_positions(platform)'"
+            " in the __init__() method."
+            " (to compute for valid positions of items in the new env class)"
+        )
+        assert hasattr(self, '_valid_agent_positions'), msg
+        assert hasattr(self, '_valid_food_item_positions'), msg
+
         # init environment state:
         self._init_state()
 
@@ -591,8 +590,12 @@ class BaseForagingEnv(gym.Env, MustOverride):
         logging.debug('Rendering')
         if self._rendering is False:
             self._rendering = True
-            # init pygame module:
-            pg.init()
+            # Since I'm using pygame stuffs also for computing the environment,
+            # better to do pg.init() it in the __init__() method regardless of rendering or not;
+            # note: after doing pg.quit(), you need to do pg.init() again if you want to use again pg,
+            #   fixme: multiple environment concurrently running could close the each others screens
+            # # init pygame module:
+            # pg.init()  # it is done only if self.render() is called at least once (see self.render() method).
 
         # reset screen if asked:
         if self._rendering_reset_request:
@@ -623,6 +626,14 @@ class BaseForagingEnv(gym.Env, MustOverride):
         assert self._fps == 0 or frame_dt >= 1000 / self._fps * .99 - 1, (
             frame_dt, 1000 / self._fps * .99 - 1, self._fps)
 
+        # todo: when using rendering (self._rendering is True) start a thread to check this; _check_quit_and_quit();
+        for event in pg.event.get():
+            if event.type == pg.QUIT:
+                warn("Program manually closed. Quitting...")
+                self.close()
+                sys.exit()
+
+    def _check_quit_and_quit(self) -> None:
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 warn("Program manually closed. Quitting...")
@@ -630,6 +641,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 sys.exit()
 
     def close(self):
+        # todo: as for files:
+        #  A closed file cannot be read or written any more. Any operation, which requires that the file be opened
+        #  will raise a ValueError after the file has been closed. Calling close() more than once is allowed.
         self.__has_been_ever_reset = False
         # pg.display.quit()
         pg.quit()
@@ -669,13 +683,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
         """
         return get_point_win2env(point, self._window_size, self._env_size)
 
-    def _check_quit_and_quit(self) -> None:
-        for event in pg.event.get():
-            if event.type == pg.QUIT:
-                warn("Program manually closed. Quitting...")
-                self.close()
-                sys.exit()
-
+    # todo: this is not using Group().draw() yet. Do it! (test it before and after to see if it improve,
+    #  get worst or stay the same)
     @override
     def _draw_env(self, screen) -> None:
         """Draw the environment in the screen.
@@ -692,6 +701,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                            food.radius * self._env2win_resize_factor)
 
         # draw agent:
+        # agent is drawn later than food items, so that it is shown on top.
         # todo: use Sprites and update the position without rewriting all the screen again
         pg.draw.circle(screen,
                        self.agent_color,
@@ -713,7 +723,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         """Create and return a new environment state (used for initialization or reset)"""
 
         # init environment space:
-        self._env_img = self._background_img.copy()
+        self._env_img = self._background_img.copy()    # .convert()  # create a copy in the fastest format for blitting
         assert self._env_img.get_size() == self._env_img_size, (
             self._env_img.get_size(), self._env_img_size)
 
@@ -735,9 +745,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
         while positions:
             self._food_items.append(FoodItem(positions.pop(), self._food_size, self.food_color, env=self))
         assert isinstance(self._food_items[0], pg.sprite.Sprite)
-        self.__food_items_group.empty()  # remove all previous food item sprites from the group
-        self.__food_items_group = pg.sprite.Group(*self._food_items)
-        assert len(self._food_items) == len(self.__food_items_group)
+        self._food_items_group.empty()  # remove all previous food item sprites from the group
+        self._food_items_group = pg.sprite.Group(*self._food_items)
+        assert len(self._food_items) == len(self._food_items_group)
 
         # self.debug_info['_init_state']
 
@@ -825,7 +835,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
             food = self._food_items[j]
             food.kill()  # remove from all groups
         self._food_items = [food for i, food in enumerate(self._food_items) if i not in remove_food]  # O(len(self._food_items)) if isinstance(remove_food, set) else O(len(remove_food) * len(self._food_items))
-        assert len(self._food_items) == len(self.__food_items_group) == self._n_food_items - self.food_items_collected
+        assert len(self._food_items) == len(self._food_items_group) == self._n_food_items - self.food_items_collected
         assert food_collected >= 0, food_collected
 
         # update _env_img: -> pos: & rotate:
@@ -845,7 +855,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
     # todo: improve efficiency (and test if efficiency is improved)
     @staticmethod
     def _is_food_item_collected(agent: Agent, food_item: FoodItem) -> bool:
-        """Food item collected when the agent step upon (or touches) the center of the food item."""
+        """Food item is collected when the agent step upon (or touches) the center of the food item."""
         assert len(agent.pos) == 2, len(agent.pos)
         x0, y0 = agent.pos
         assert len(food_item.pos) == 2, len(food_item.pos)
@@ -898,6 +908,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
     @override
     def _get_point_color(self, point):
+        """Returns the color in the env_img in correspondence of ``point``
+        (``point`` in the env space)."""
         col = self.outside_color
         if 0 <= point[0] <= self._env_size[0] and 0 <= point[1] <= self._env_size[1]:
             col = self._env_img.get_at(
@@ -981,11 +993,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 raise ValueError(f"item: Literal['agent', 'food'], got {item!r} instead.")
         return bool(res)
 
-    def get_agent_distance_to_nearest_food_item(self):
-        # return self._agent.get_polygon().distance(self.__food_items_union)
-        # more efficient:
-        return self._agent.pos.distance(self.__food_items_union) - self._agent.radius
-
+    # todo: you can move this in geometry (with a general polygon, i.e. platform)
+    #  and here just do a wrapper that uses self protected variables.
     def _get_random_non_overlapping_positions(self,
                                               n,
                                               radius: Union[list, int],

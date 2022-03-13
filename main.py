@@ -4,6 +4,7 @@ from pprint import pprint
 import random  # neat uses random  # todo: allow seeding in neat
 import sys
 import time
+from typing import Optional
 
 import gym
 import matplotlib as mpl
@@ -22,51 +23,63 @@ from memory_evolution.utils import evaluate_agent
 # matplotlib settings:
 mpl.use('Qt5Agg')  # Change matplotlib backend to show correctly in PyCharm.
 
+# # get utcnow string:
+# UTCNOW = pd.Timestamp.utcnow().strftime('%Y-%m-%d_%H%M%S.%f%z')
+
+
+# todo: move in utils/_logging.py
 # logging settings:
-if __name__ == '__main__':
+def set_main_logger(
+                logger_name: Optional[str] = None,
+                file_handler_now: Optional[int] = logging.DEBUG,
+                file_handler_all: Optional[int] = logging.DEBUG,
+                stderr_handler: Optional[int] = logging.WARNING,
+                stdout_handler: Optional[int] = logging.INFO,
+        ) -> str:
+    """Set root logger: this function should be run as first line of the main file.
+    It returns the UTCNOW string (the one used as tag in the filename of
+    ``file_handler_now`` file).
+
+    If ``logger_name`` is not provided or ``None``, it uses the root logger by default.
+    """
+    # get utcnow string:
+    utcnow = pd.Timestamp.utcnow().strftime('%Y-%m-%d_%H%M%S.%f%z')
+
     logFormatter = logging.Formatter(
         "%(asctime)s [%(processName)-12s %(process)-7d] [%(threadName)-12s %(thread)-7d] "
         "[%(levelname)-5s] %(module)-15s:  %(message)s")
 
     os.makedirs('logs', exist_ok=True)
 
-    utcnow = pd.Timestamp.utcnow().strftime('%Y-%m-%d_%H%M%S.%f%z')
-    rootLogger = logging.getLogger()
-    fileHandler = logging.FileHandler(f"logs/mylogs_{utcnow}.log", mode='w')  # default mode='a'
-    fileHandler.setFormatter(logFormatter)
-    fileHandler.setLevel(logging.DEBUG)
-    rootLogger.addHandler(fileHandler)
+    if file_handler_now is not None:
+        rootLogger = logging.getLogger()
+        fileHandler = logging.FileHandler(os.path.join("logs", f"log_{utcnow}.log"), mode='w')  # default mode='a'
+        fileHandler.setFormatter(logFormatter)
+        fileHandler.setLevel(file_handler_now)
+        rootLogger.addHandler(fileHandler)
 
-    rootLogger = logging.getLogger()
-    fileHandler = logging.FileHandler("logs/mylogs_all.log", mode='a')  # default mode='a'
-    fileHandler.setFormatter(logFormatter)
-    fileHandler.setLevel(logging.DEBUG)
-    rootLogger.addHandler(fileHandler)
+    if file_handler_all is not None:
+        rootLogger = logging.getLogger()
+        fileHandler = logging.FileHandler(os.path.join("logs", "log_all.log"), mode='a')  # default mode='a'
+        fileHandler.setFormatter(logFormatter)
+        fileHandler.setLevel(file_handler_all)
+        rootLogger.addHandler(fileHandler)
 
-    consoleHandler = logging.StreamHandler(sys.stderr)  # sys.stderr default
-    consoleHandler.setFormatter(logFormatter)
-    consoleHandler.setLevel(logging.WARNING)
-    rootLogger.addHandler(consoleHandler)
+    if stderr_handler is not None:
+        consoleHandler = logging.StreamHandler(sys.stderr)  # sys.stderr default
+        consoleHandler.setFormatter(logFormatter)
+        consoleHandler.setLevel(stderr_handler)
+        rootLogger.addHandler(consoleHandler)
 
-    PRINT_ALL_MESSAGES_ON_STDOUT = False
-    PRINT_ALL_INFO_PLUS_MESSAGES_ON_STDOUT = True
-    if PRINT_ALL_MESSAGES_ON_STDOUT:
+    if stdout_handler is not None:
         consoleStdoutHandler = logging.StreamHandler(sys.stdout)
-        consoleStdoutHandler.setFormatter(logging.Formatter("%(message)s"))  # default
-        consoleStdoutHandler.setLevel(logging.NOTSET)
-        rootLogger.addHandler(consoleStdoutHandler)
-    elif PRINT_ALL_INFO_PLUS_MESSAGES_ON_STDOUT:
-        consoleStdoutHandler = logging.StreamHandler(sys.stdout)
-        consoleStdoutHandler.setFormatter(logging.Formatter("%(message)s"))  # default
-        consoleStdoutHandler.setLevel(logging.INFO)
+        consoleStdoutHandler.setFormatter(logging.Formatter("%(message)s"))  # default, it logs just the message
+        consoleStdoutHandler.setLevel(stdout_handler)
         rootLogger.addHandler(consoleStdoutHandler)
 
     rootLogger.setLevel(logging.NOTSET)  # logging.WARNING default for root, logging.NOTSET default for others.
 
-# neat random seeding:
-random.seed(42)
-logging.debug(random.getstate())
-# Use random.setstate(state) to set an old state, where 'state' have been obtained from a previous call to getstate().
+    return utcnow
 
 
 class RandomAgent(BaseAgent):
@@ -179,6 +192,16 @@ def run(env: gym.Env, agent=None, episodes=1) -> None:
 
 if __name__ == '__main__':
 
+    # Settings:
+
+    # logging settings:
+    UTCNOW = set_main_logger(file_handler_all=None, stdout_handler=logging.INFO)
+
+    # neat random seeding:
+    random.seed(42)
+    logging.debug(random.getstate())
+    # Use random.setstate(state) to set an old state, where 'state' have been obtained from a previous call to getstate().
+
     # ----- ENVIRONMENT -----
 
     # env = gym.make('CartPole-v0')
@@ -190,6 +213,7 @@ if __name__ == '__main__':
     # env = TMaze(.1001, env_size=(1.5, 1.), fps=None, seed=42)
     # env = TMaze(seed=42)
     env = TMaze(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
+    #env = BaseForagingEnv(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
     # env = TMaze(seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
     logging.debug(env._seed)  # todo: use a variable seed (e.g.: seed=42; env=TMaze(seed=seed); logging.debug(seed)) for assignation of seed, don't access the internal variable
     print('observation_space:',
@@ -222,20 +246,30 @@ if __name__ == '__main__':
 
     checkpointer = neat.Checkpointer(generation_interval=100,
                                      time_interval_seconds=300,
-                                     filename_prefix='neat-checkpoint-')
+                                     filename_prefix=os.path.join(
+                                         'logs',
+                                         UTCNOW + '_' + 'neat-checkpoint-'))
 
     agent.set_env(env)
-    winner = agent.evolve(render=True, checkpointer=checkpointer, parallel=False)
+    winner = agent.evolve(render=1, checkpointer=checkpointer, parallel=0,
+                          filename_tag=UTCNOW + '_', path_dir='logs')
     # fixme: todo: parallel=True use the same seed for the environment in each process
     #     (but for the agent is correct and different it seems)
     print(type(winner))
+    print(list(map(type, winner)))
     evaluate_agent(agent, env, episodes=2, render=True)
     # run(env, episodes=2)
 
+    # ----- CLOSING AND REPORTING -----
+
+    env.close()
+
+
 '''
 Better efficiency:
+(parallel = False)
 
-*   b163541 (HEAD -> main, origin/main, origin/HEAD) Merge branch 'continuous' into main Continuous environment and agents with evolution
+* b163541 (HEAD -> main, origin/main, origin/HEAD) Merge branch 'continuous' into main Continuous environment and agents with evolution
 
 render = False
 Episode finished after 500 timesteps, for a total of 500 simulated seconds (in 7.13121553 actual seconds).
@@ -243,12 +277,22 @@ Episode finished after 500 timesteps, for a total of 500 simulated seconds (in 7
 render = True
 Episode finished after 500 timesteps, for a total of 500 simulated seconds (in 19.826593934 actual seconds).
 
-*   NOW
+
+* ce3470d (continuous) big refactoring, environment efficiency improved, env_img, pixel space mask for valid positions, geometry, pygame sprites for items
 
 render = False
 Episode finished after 500 timesteps, for a total of 500 simulated seconds (in 1.843639818 actual seconds).
 
 render = True
 Episode finished after 500 timesteps, for a total of 500 simulated seconds (in 15.735012616 actual seconds).
+
+
+Note: on both tests here above with rendering True, the rendering was slow because of the external screen used,
+by using only the integrated screen of the pc the rendering time goes down to 19->14 and 15->3.5 respectively.
+
+
+* NOW
+
+TODO test
 
 '''

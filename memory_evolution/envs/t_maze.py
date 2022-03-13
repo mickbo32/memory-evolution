@@ -12,7 +12,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.random import SeedSequence, default_rng
-import pygame
+import pygame as pg
 from shapely.affinity import rotate, scale, translate
 from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiPolygon
 from shapely.ops import unary_union, triangulate
