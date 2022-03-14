@@ -7,5 +7,7 @@ from ._envs import (
     is_color,
 )
 from ._evaluate_agent import evaluate_agent
+from ._logging import set_main_logger
 from ._override import MustOverride, MustOverrideMeta, override
+from ._video import generate_gif_from_path
 

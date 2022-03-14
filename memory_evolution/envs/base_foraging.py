@@ -1,3 +1,4 @@
+import os
 from collections import defaultdict, Counter
 from collections.abc import Sequence
 from functools import reduce
@@ -5,6 +6,7 @@ import logging
 import math
 from numbers import Number, Real
 from operator import mul
+import re
 from typing import Literal, Optional, Union, Any
 from warnings import warn
 import sys
@@ -15,6 +17,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.random import SeedSequence, default_rng
+import pandas as pd
 import pygame as pg
 # from shapely.affinity import rotate, scale, translate
 from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiPoint, MultiPolygon
@@ -57,7 +60,7 @@ def get_env2win_scaling_factor(window_size, env_size
 
 
 def get_point_env2win(point, window_size, env_size
-                      ) -> tuple[int]:
+                      ) -> tuple[int, ...]:
     """Take a point in the environment coordinate system
     and transform it in the window coordinate system (i.e. a pixel).
     """
@@ -308,10 +311,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
     and it should be called ``self._compute_and_set_valid_positions(platform)`` to compute
     the correct valid positions for the new class.
     """
-    metadata = {'render.modes': ['human']}
+    metadata = {'render.modes': ['human', 'human+save[save_dir]', 'save[save_dir]']}
 
     def __init__(self,
-                 window_size: Union[int, Sequence[int]] = 640,  # (640, 480),
+                 window_size: Union[int, Sequence[int]] = 320,  # (640, 480),
                  env_size: Union[float, Sequence[float]] = 1.,
                  n_food_items: int = 3,
                  rotation_step: float = 20.,
@@ -612,13 +615,23 @@ class BaseForagingEnv(gym.Env, MustOverride):
             return observation, self._get_info()
 
     def render(self, mode='human'):
+        """Overrides the base method.
+
+        Args:
+            mode: a string containing 'human', or 'save[save_dir]'
+                where save_dir is a path, or both separated by a '+';
+                in 'save[save_dir]' mode, save_dir will be created if
+                it doesn't exist, if it does exist an exception will
+                be thrown.
+        """
         logging.debug('Rendering')
         if self._rendering is False:
             self._rendering = True
             # Since I'm using pygame stuffs also for computing the environment,
             # better to do pg.init() it in the __init__() method regardless of rendering or not;
             # note: after doing pg.quit(), you need to do pg.init() again if you want to use again pg,
-            #   fixme: multiple environment concurrently running could close the each others screens
+            #   fixme: multiple independent environment objects concurrently running could close the each others screens
+            #       ; fix it or allow only maximum one object to be alive at any moment.
             # # init pygame module:
             # pg.init()  # it is done only if self.render() is called at least once (see self.render() method).
 
@@ -634,12 +647,30 @@ class BaseForagingEnv(gym.Env, MustOverride):
             self._screen = pg.display.set_mode(self._window_size)
             self._screen.blit(self._background_img, (0, 0))
 
+            # if 'save' mode, init save_dir:
+            match = re.search(r'^(?:.*\+)?save\[(.*)](?:\+.*)?$', mode)
+            if match:
+                os.makedirs(match.group(1), exist_ok=False)
+
         self._screen.blit(self._background_img, (0, 0))  # todo: update instead of rewriting each time
         #                                                # todo: and use sprites
         self._draw_env(self._screen)
 
         # flip/update the screen:
-        pg.display.flip()  # pg.display.update()
+        if mode == 'human' or re.search(r'^(?:.*\+)?human(?:\+.*)?$', mode):
+            pg.display.flip()  # pg.display.update()
+
+        # if in 'save' mode, save frames of the display.
+        if mode != 'human':
+            # you could also use mode.split('+') and then check separately the modes provided.
+            match = re.search(r'^(?:.*\+)?save\[(.*)](?:\+.*)?$', mode)
+            if match:
+                pg.image.save(self._screen,
+                              os.path.join(match.group(1), f"frame_{self.step_count}.jpg"))
+            elif re.search(r'^(?:.*\+)?human(?:\+.*)?$', mode):
+                pass
+            else:
+                raise ValueError(f"mode={mode!r} is not a valid rendering mode.")
 
         # tick() stops the program, do you want to see everything slowly or just some samples?
         # if you want to slow down and see everything use tick(), otherwise use set_timer()

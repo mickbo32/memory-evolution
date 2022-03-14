@@ -61,6 +61,7 @@ def convert_image_to_pygame(image, format_: IMAGE_FORMAT = "RGB"):
 def convert_pg_surface_to_array(surface):
     """note: returns a np.ndarray, channels are 3, it converts just colors (not alpha)"""
     if isinstance(surface, pg.Surface):
+        # you could use pygame.image.tostring(Surface, format, flipped=False) -> string
         arr = pg.surfarray.array3d(surface).swapaxes(0, 1)
         # use pygame.surfarray.pixels3d if you don't want a copy but you want a reference
         # note: if you reference the surface, it will remain locked for the lifetime of the array,

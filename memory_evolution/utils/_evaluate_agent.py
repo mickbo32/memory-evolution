@@ -1,3 +1,4 @@
+import os.path
 from abc import ABC, abstractmethod
 from collections import defaultdict, Counter
 from collections.abc import Iterable, Sequence
@@ -9,6 +10,7 @@ from pprint import pprint
 from typing import Optional, Union, Any, Literal
 from warnings import warn
 import sys
+import tempfile
 import time
 
 import gym
@@ -33,6 +35,9 @@ def evaluate_agent(agent,
                    max_actual_time_per_episode: Optional[Union[int, float]] = None,
                    episodes_fitness_aggr_func: Literal['mean', 'max', 'min'] = 'min',
                    render: bool = False,
+                   save_gif: bool = False,
+                   save_gif_dir: str = None,
+                   save_gif_name: str = "frames.gif",
                    ) -> float:
     """Evaluate agent in a gym environment and return the fitness of the agent.
 
@@ -51,6 +56,21 @@ def evaluate_agent(agent,
             values collected for each single independent episode (default is
             'min': The genome's fitness is its worst performance across all runs).
         render: if True, render the environment while evaluating the agent.
+        save_gif: if True, save a gif for each episode showing the agent
+            in action; if True also the ``save_gif_dir`` argument should
+            be provided, ``save_gif_name`` is optional. Note: it is not safe
+            to use this when performing computation in parallel.  # (to prevent this base_foraging raise an error if the frame directory already exists).
+        save_gif_dir: if ``save_gif`` is True, this is the path where frames
+            and the gif will be saved; the directory should not exist and
+            it will be created; if ``save_gif_dir`` is provided, ``save_gif_name``
+            will be the name of the gif file which is generated inside this
+            folder; if ``save_gif_dir`` is not provided, a temporary directory
+            will be used for storing the frames while generating the gif file
+            and ``save_gif_name`` is the path to the gif file relative to the
+            working directory or it is a full path to the gif file.
+            If ``save_gif`` is False this argument is ignored.
+        save_gif_name: if ``save_gif`` is True, this is the name of the
+            gif. If ``save_gif`` is False this argument is ignored.
 
     Returns:
         The fitness value of the agent (a score that tells how good is the agent in solving the task).
@@ -59,6 +79,18 @@ def evaluate_agent(agent,
         RuntimeError: if ``max_iters_per_episode`` is not ``None`` and
             episode has not finished after ``max_iters_per_episode`` timesteps.
     """
+    keep_frames = bool(save_gif_dir)
+    if save_gif_dir is None:
+        temp_dir = tempfile.TemporaryDirectory(prefix='frames-')
+        # temp_dir will be automatically deleted when the program is closed
+        # or is garbage-collected or temp_dir.cleanup() is explicitly called.
+        # anyway it will be created in /tmp/, which is cleaned by the os when
+        # restarting.
+        save_gif_dir = os.path.join(temp_dir.name, 'frames')
+    episode_str = ''
+    rendering_mode = ''
+    if render:
+        rendering_mode += 'human'
     time_step = env.time_step  # todo: non serve, basta fare env.t - prev_env_t; togli time_step da env e chiama env.dt
     fitnesses = []
     for i_episode in range(episodes):
@@ -66,6 +98,15 @@ def evaluate_agent(agent,
         logging.debug(msg)
         if render:
             print(msg)
+        if save_gif:
+            if rendering_mode:
+                rendering_mode += '+'
+            rendering_mode += 'save[' + save_gif_dir
+            if episodes > 1:
+                episode_str = f"__episode_{i_episode}"
+                if keep_frames:
+                    rendering_mode += episode_str
+            rendering_mode += ']'
         start_time_episode = time.perf_counter_ns()
         # Reset env and agent:
         observation, info = env.reset(return_info=True)
@@ -84,8 +125,8 @@ def evaluate_agent(agent,
         fitness = 0.0  # food collected
         if render:
             # print(observation)
-            env.render()
-        i = 0
+            env.render(mode=rendering_mode)
+        step = 0
         done = False
         # while not done and (max_iters_per_episode is None or t < max_iters_per_episode):
         # while not done and (max_env_t_per_episode is None or env.t < max_env_t_per_episode):
@@ -94,13 +135,13 @@ def evaluate_agent(agent,
             # Agent performs an action based on the current observation (and
             # its internal state, i.e. memory):
             if isinstance(env, memory_evolution.envs.BaseForagingEnv):
-                assert env.step_count == i, (env.step_count, i)
+                assert env.step_count == step, (env.step_count, step)
             action = agent.action(observation)
             if isinstance(env, memory_evolution.envs.BaseForagingEnv):
-                assert env.step_count == i, (env.step_count, i)
+                assert env.step_count == step, (env.step_count, step)
             observation, reward, done, info = env.step(action)
             if isinstance(env, memory_evolution.envs.BaseForagingEnv):
-                assert env.step_count == i + 1, (env.step_count, i)
+                assert env.step_count == step + 1, (env.step_count, step)
             fitness += reward
             if render:
                 logging.debug(f"Observation hash: {hash(observation.tobytes())}")
@@ -110,9 +151,9 @@ def evaluate_agent(agent,
                 # # print(info['state']['agent'])
                 # # print(len(info['state']['food_items']), info['state']['food_items'])
                 # # pprint(info)
-                env.render()
+                env.render(mode=rendering_mode)
                 # print()
-            i += 1
+            step += 1
         end_t = env.t
         end_time_episode = time.perf_counter_ns()
         if isinstance(env, memory_evolution.envs.BaseForagingEnv):
@@ -135,21 +176,34 @@ def evaluate_agent(agent,
             logging.debug(msg)
         fitnesses.append(fitness)
         if done:
+            actual_time = (end_time_episode - start_time_episode) / 10 ** 9
             msg = (
                 f"{agent} fitness {fitness}\n"
-                f"Episode finished after {i} timesteps"
+                f"Episode finished after {step} timesteps"
                 f", for a total of {end_t} simulated seconds"
-                f" (in {(end_time_episode - start_time_episode) / 10 ** 9} actual seconds)."
+                f" (in {actual_time} actual seconds)."
                 #"\n"
             )
             logging.debug('\n\t' + '\n\t'.join(msg.split('\n')))
             if render:
                 print(msg, end='\n\n')
+            if save_gif:
+                gifname = save_gif_name
+                if episode_str:
+                    root, ext = os.path.splitext(save_gif_name)
+                    gifname = root + episode_str + ext
+                memory_evolution.utils.generate_gif_from_path(save_gif_dir + (episode_str if keep_frames else ''),
+                                                              gif_name=gifname,
+                                                              remove_frames=(not keep_frames),
+                                                              save_gif_in_frames_dir=keep_frames,
+                                                              duration=actual_time/(step+1))  # all steps plus the 0 step.
         else:
             raise RuntimeError(
-                f"Episode has not finished after {i} timesteps"
+                f"Episode has not finished after {step} timesteps"
                 f" and {end_t} simulated seconds"
                 f" (in {(end_time_episode - start_time_episode) / 10 ** 9} actual seconds).")
+    if save_gif_dir is None:
+        temp_dir.cleanup()
     final_fitness = getattr(np, episodes_fitness_aggr_func)(fitnesses)
     # env.close()  # use it only in main, otherwise it will be closed and
     # opened again each time it is evaluated.

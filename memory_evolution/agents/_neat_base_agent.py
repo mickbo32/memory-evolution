@@ -262,6 +262,7 @@ class BaseNeatAgent(BaseAgent, ABC):
                render: bool = False,
                filename_tag: str = '',
                path_dir: str = '',
+               file_ext: str = '.svg',
                ):
         """Evolve a population of agents of the type of self and then return
         the best genome. The best genome is also saved in self. It returns also
@@ -323,8 +324,10 @@ class BaseNeatAgent(BaseAgent, ABC):
               f" {pd.Timedelta(nanoseconds=tot_time_thread_time)!s}).")
 
         # Use this function to create filenames.
+        if not file_ext.startswith('.') or '/' in file_ext:
+            raise ValueError("'file_ext' is not a valid file extension")
         def make_filename(filename):
-            return os.path.join(path_dir, filename_tag + filename)
+            return os.path.join(path_dir, filename_tag + filename + file_ext)
 
         # Pickle winner.
         with open(make_filename("genome.pickle"), "wb") as f:
@@ -332,8 +335,8 @@ class BaseNeatAgent(BaseAgent, ABC):
 
         # Display stats on the evolution performed.
         self.visualize_evolution(stats, stats_ylog=True, view=True,
-                                 filename_stats=make_filename("fitness.svg"),
-                                 filename_speciation=make_filename("speciation.svg"))
+                                 filename_stats=make_filename("fitness"),
+                                 filename_speciation=make_filename("speciation"))
 
         # Display the winning genome.
         print('\nBest genome:\n{!s}'.format(winner))
