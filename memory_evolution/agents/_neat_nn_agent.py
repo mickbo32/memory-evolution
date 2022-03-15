@@ -21,7 +21,6 @@ from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiP
 from shapely.ops import unary_union, triangulate
 
 from memory_evolution.agents import BaseNeatAgent
-from memory_evolution.utils import evaluate_agent
 from memory_evolution.utils import MustOverride, override
 
 
@@ -42,15 +41,4 @@ class RnnNeatAgent(BaseNeatAgent):
     def reset(self) -> None:
         """Extends the base method."""
         super().reset()
-
-    def visualize_genome(self, genome, name='Genome',
-                         view=False, filename=None,
-                         show_disabled=True, prune_unused=False):
-        """Extends the base method."""
-        super().visualize_genome(genome,
-                                 name=name,
-                                 view=view,
-                                 filename=filename,
-                                 show_disabled=show_disabled,
-                                 prune_unused=prune_unused)
 

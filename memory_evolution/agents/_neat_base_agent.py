@@ -28,7 +28,7 @@ from shapely.ops import unary_union, triangulate
 
 from memory_evolution.agents import BaseAgent
 from memory_evolution.agents.exceptions import EnvironmentNotSetError
-from memory_evolution.utils import evaluate_agent
+from memory_evolution.evaluate import evaluate_agent
 from memory_evolution.utils import MustOverride, override
 from .exceptions import NotEvolvedError
 
@@ -239,10 +239,10 @@ class BaseNeatAgent(BaseAgent, ABC):
         neat.visualize.plot_stats(stats, ylog=stats_ylog, view=view, filename=filename_stats)
         neat.visualize.plot_species(stats, view=view, filename=filename_speciation)
 
-    @abstractmethod
     def visualize_genome(self, genome, name='Genome',
                          view=False, filename=None,
-                         show_disabled=True, prune_unused=False):
+                         show_disabled=True, prune_unused=False,
+                         node_colors=None, format='sgv'):  # 'format' abbreviation: fmt
         """Display the genome."""
         print('\n{!s}:\n{!s}'.format(name, genome))
 
@@ -252,7 +252,9 @@ class BaseNeatAgent(BaseAgent, ABC):
             filename=filename,
             node_names=node_names,
             show_disabled=show_disabled,
-            prune_unused=prune_unused
+            prune_unused=prune_unused,
+            node_colors=node_colors,
+            format=format
         )
 
     def evolve(self,
@@ -262,8 +264,8 @@ class BaseNeatAgent(BaseAgent, ABC):
                render: bool = False,
                filename_tag: str = '',
                path_dir: str = '',
-               file_ext: str = '.svg',
-               ):
+               image_format: str = 'svg',
+               ) -> tuple[neat.genome.DefaultGenome, neat.statistics.StatisticsReporter]:
         """Evolve a population of agents of the type of self and then return
         the best genome. The best genome is also saved in self. It returns also
         some stats about the evolution.
@@ -323,11 +325,10 @@ class BaseNeatAgent(BaseAgent, ABC):
               f" (for a total of {pd.Timedelta(nanoseconds=tot_time_process_time)!s} and"
               f" {pd.Timedelta(nanoseconds=tot_time_thread_time)!s}).")
 
-        # Use this function to create filenames.
-        if not file_ext.startswith('.') or '/' in file_ext:
-            raise ValueError("'file_ext' is not a valid file extension")
+        if image_format.startswith('.'):
+            image_format = image_format[1:]
         def make_filename(filename):
-            return os.path.join(path_dir, filename_tag + filename + file_ext)
+            return os.path.join(path_dir, filename_tag + filename)
 
         # Pickle winner.
         with open(make_filename("genome.pickle"), "wb") as f:
@@ -335,17 +336,18 @@ class BaseNeatAgent(BaseAgent, ABC):
 
         # Display stats on the evolution performed.
         self.visualize_evolution(stats, stats_ylog=True, view=True,
-                                 filename_stats=make_filename("fitness"),
-                                 filename_speciation=make_filename("speciation"))
+                                 filename_stats=make_filename("fitness." + image_format),
+                                 filename_speciation=make_filename("speciation." + image_format))
 
         # Display the winning genome.
         print('\nBest genome:\n{!s}'.format(winner))
-        self.visualize_genome(winner, view=True, name='Best Genome', filename=make_filename("winner-genome.gv"))
+        self.visualize_genome(winner, view=True, name='Best Genome', filename=make_filename("winner-genome.gv"),
+                              format=image_format)
 
         # Show output of the most fit genome against training data.
         print('\nOutput:')
         print('rendering one episode with the best agent...')
-        evaluate_agent(self, self.get_env(), render=True)
+        evaluate_agent(self, self.get_env(), episodes=1, render=True)
 
         # Try to reload population from a saved checkpointer and run evolution for few generations.
         if checkpointer is not None and checkpointer.last_generation_checkpoint != -1:

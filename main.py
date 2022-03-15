@@ -18,7 +18,8 @@ from gym.utils.env_checker import check_env  # from stable_baselines.common.env_
 
 from memory_evolution.agents import BaseAgent, RnnNeatAgent, CtrnnNeatAgent
 from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze
-from memory_evolution.utils import evaluate_agent, set_main_logger
+from memory_evolution.evaluate import evaluate_agent
+from memory_evolution.utils import set_main_logger
 
 # matplotlib settings:
 mpl.use('Qt5Agg')  # Change matplotlib backend to show correctly in PyCharm.
@@ -159,7 +160,8 @@ if __name__ == '__main__':
     # env = BaseForagingEnv(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7) # todo: use in tests
     # env = TMaze(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
     # env = BaseForagingEnv(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
-    env = TMaze(seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
+    # env = TMaze(seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
+    env = TMaze(seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7, observation_noise=('normal', 0.0, 0.5))
     logging.debug(env._seed)  # todo: use a variable seed (e.g.: seed=42; env=TMaze(seed=seed); logging.debug(seed)) for assignation of seed, don't access the internal variable
     print('observation_space:',
           env.observation_space.shape,
@@ -197,15 +199,12 @@ if __name__ == '__main__':
 
     agent.set_env(env)
     winner = agent.evolve(render=0, checkpointer=checkpointer, parallel=1,
-                          filename_tag=UTCNOW + '_', path_dir=logging_dir, file_ext='.png')
+                          filename_tag=UTCNOW + '_', path_dir=logging_dir, image_format='png')
     # fixme: todo: parallel=True use the same seed for the environment in each process
     #     (but for the agent is correct and different it seems)
-    print(type(winner))
-    print(list(map(type, winner)))
     evaluate_agent(agent, env, episodes=2, render=True,
                    save_gif=True,
-                   save_gif_dir=os.path.join(logging_dir, 'frames_' + UTCNOW),
-                   save_gif_name=UTCNOW + '.gif')
+                   save_gif_name=os.path.join(logging_dir, 'frames_' + UTCNOW + '.gif'))
     # run(env, episodes=2)
 
     # ----- CLOSING AND REPORTING -----

@@ -22,7 +22,7 @@ from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiP
 from shapely.ops import unary_union, triangulate
 
 # DEBUG:
-# shapely visualization on plt:
+# shapely visualization on plt: (import also: import matplotlib.pyplot as plt)
 import geopandas as gpd
 
 
@@ -304,10 +304,6 @@ line: (6, 5, 0, 6) pixels: [(6, 5), (5, 5), (4, 5), (3, 5), (2, 6), (1, 6), (0, 
 
 
 
-
-
-
-
 def is_simple_polygon(polygon: Polygon):
     return (
         isinstance(polygon, Polygon)
@@ -388,31 +384,34 @@ def triangulate_nonconvex_polygon(polygon: Union[Polygon, MultiPolygon]):
     return triangles
 
 
-'''
-def _get_random_non_overlapping_positions(self,
-                                          n,
-                                          radius: Union[list, int],
-                                          platform=None,
-                                          ) -> list[Pos]:
-    def is_valid_polygon_position(env, pos: Union[Point, Polygon]):
+def get_random_non_overlapping_positions(n,
+                                         radius: Union[list, int],
+                                         platform,
+                                         env_size,
+                                         random_generator,
+                                         ) -> list[Pos]:
+    def _is_valid_polygon_position(platform, pos: Union[Point, Polygon]):
         if not isinstance(pos, (Point, Polygon)):
             raise TypeError('`pos` should be an instance of Point or Polygon')
         if pos.has_z:
             raise ValueError('`pos` should be 2D (and without channels)')
-        return env._platform.covers(pos)
+        return platform.covers(pos)
 
+    if not isinstance(random_generator, np.random.Generator):
+        raise TypeError("'random_state' is not a np.random.Generator object"
+                        f", the object provided is of type {type(random_generator)} instead.")
     if isinstance(radius, int):
         radius = [radius] * n
     if n != len(radius):
         raise ValueError(f"`radius` should be int or a list of `n` integers, "
                          f"instead has {len(radius)} elements.")
-    assert 2 == len(self._env_size), self._env_size
+    assert 2 == len(env_size), env_size
 
     # more efficient and always ending version:  # todo: test it with polygons with holes
 
     epsilon = max(np.finfo(np.float32).resolution * (3 * 10), .0001)
-    init_platform = self._platform if platform is None else platform
-    rng = self.env_space.np_random
+    init_platform = platform
+    rng = random_generator
 
     poses = []
     # chosen = []  # polygons already positioned
@@ -440,7 +439,7 @@ def _get_random_non_overlapping_positions(self,
         tr = rng.choice(triangles, p=probs)
 
         # pick a random point in this triangle:
-        pt = self._get_random_point_in_triangle(tr, rng)
+        pt = get_random_point_in_triangle(tr, rng)
 
         # create object, update poses and chosen:
         pt_buff = pt.buffer(r)  # + epsilon * r)
@@ -455,14 +454,13 @@ def _get_random_non_overlapping_positions(self,
     # gpd.GeoSeries([tr.boundary for tr in triangles]).plot(ax=ax, color='gray')
     # gpd.GeoSeries([Point(p) for p in poses]).plot(ax=ax, color='r')
     # plt.show()
-    assert all(is_valid_polygon_position(self, pos.buffer(r)) for pos, r in zip(poses, radius)), (
-        [p.wkt for p, r in zip(poses, radius) if not is_valid_polygon_position(self, p.buffer(r))],
-        [p.wkt for p in poses])
+    assert all(_is_valid_polygon_position(init_platform, pos.buffer(r)) for pos, r in zip(poses, radius)), (
+        [(p.wkt, r) for p, r in zip(poses, radius) if not _is_valid_polygon_position(init_platform, p.buffer(r))])
     return [Pos(p.x, p.y) for p in poses]
 
 
-@staticmethod
-def _get_random_point_in_triangle(triangle, random_generator) -> Point:
+def get_random_point_in_triangle(triangle, random_generator) -> Point:
+
     epsilon = np.finfo(np.float32).resolution * (3 * 10)
 
     if not isinstance(random_generator, np.random.Generator):
@@ -505,4 +503,4 @@ def _get_random_point_in_triangle(triangle, random_generator) -> Point:
     assert triangle.intersects(pnt), (pnt.wkt, triangle.boundary.coords[:])
     # print(pnt)
     return pnt
-'''
+

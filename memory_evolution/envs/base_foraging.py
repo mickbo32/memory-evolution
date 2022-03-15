@@ -1,6 +1,6 @@
 import os
 from collections import defaultdict, Counter
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from functools import reduce
 import logging
 import math
@@ -324,6 +324,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                  vision_depth: float = .2,
                  vision_field_angle: float = 180.,
                  vision_resolution: int = 10,
+                 observation_noise: Sequence[str, Real, Real] = None,
                  init_agent_position: Optional[Pos] = None,
                  init_food_positions: Optional[list] = None,
                  max_steps: Optional[int] = None,
@@ -352,6 +353,18 @@ class BaseForagingEnv(gym.Env, MustOverride):
             init_food_positions: if provided should be a list of ``n_food_items`` valid
                     food item positions (in the environment space). If ``None``,
                     ``n_food_items`` food items are generated in random positions.
+            observation_noise: If None, observation is returned as it is. Otherwise, add noise
+                    to the observation, in this case ``observation_noise``
+                    describes which method to use for noise generation, it should be a Sequence
+                    which has as first element a string that refer to which method to use for
+                    random number generation, the following elements are the arguments
+                    to that random number generating method chosen; the noise is then added
+                    to the observation, and clipped to the observation space low and high values,
+                    just before being returned by the step() and reset() methods.
+                    Valid random number generation methods are: {'normal', 'uniform'}.
+                    Examples:
+                        observation_noise=('normal', 0.0, 1.0)  # normal distribution mean=0.0, std=1.0
+                        observation_noise=('uniform', 0.0, 1.0)  # uniform distribution [low=0.0, high=1.0)
             max_steps: after this number of steps the environment is done (the
                     ``max_steps``_th step it will return done); if ``None``
                     continue forever (done always False).
@@ -454,6 +467,44 @@ class BaseForagingEnv(gym.Env, MustOverride):
                                     dtype=np.uint8,
                                     seed=seeds[2])
 
+        # parse observation noise generator tuple:
+        if observation_noise is not None:
+            # obs_noise_err_msg = (  # todo: togli commento
+            #     "'observation_noise' should be an iterable which has as first element a string \n"
+            #     "    that refer to which method to use for random generations, picking it from \n"
+            #     "    a np.random.Generator, and the following elements are the arguments to \n"
+            #     "    that random generating method.\n"
+            #     "    e.g. "
+            # )
+            # valid_random_generation_methods = ['normal', 'uniform']
+            # obs_noise_err_msg = (
+            #     "'observation_noise' should be an iterable which has as first element a string \n"
+            #     "    that refer to which method to use for random number generation, the following \n"
+            #     "    elements are the arguments to that random number generating method chosen.\n"
+            #     f"    Valid random number generation methods are: {valid_random_generation_methods}\n"
+            #     "    Examples:\n"
+            #     "        observation_noise=('normal', 0.0, 1.0)  # normal distribution mean=0.0, std=1.0\n"
+            #     "        observation_noise=('uniform', 0.0, 1.0)  # uniform distribution [low=0.0, high=1.0)\n"
+            #     "\n"
+            # )
+            obs_noise_err_msg = (
+                f"'observation_noise' not correct, see documentation of "
+                f"{__name__ if __name__ != '__main__' else ''}.{type(self).__qualname__}.__init__"
+            )  # note: the optimizer remove doc-strings, so I cannot print 'self.__init__.__doc__' here
+            valid_random_generation_methods = {'normal', 'uniform'}
+            if not isinstance(observation_noise, Sequence):
+                raise TypeError(obs_noise_err_msg)
+            if len(observation_noise) != 3 or observation_noise[0] not in valid_random_generation_methods:
+                raise ValueError(obs_noise_err_msg)
+            random_func = getattr(self.observation_space.np_random, observation_noise[0], None)
+            assert random_func is not None, random_func
+            observation_noise_args = observation_noise[1:]
+            def get_observation_noise():
+                return random_func(*observation_noise_args,
+                                   size=self.observation_space.shape).astype(self.observation_space.dtype)
+            observation_noise = get_observation_noise
+        self._observation_noise = observation_noise
+
         bgd_col = self.background_color
         assert is_color(bgd_col), bgd_col
         self._soil = np.ones(self.env_space.shape, dtype=self.env_space.dtype) * bgd_col
@@ -471,7 +522,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
             # valid positions:
             self._compute_and_set_valid_positions(self._platform)
 
-        # self.__observation = None  # todo
+        # self._observation = None  # todo
 
         if init_agent_position is not None:
             pos = init_agent_position
@@ -556,8 +607,12 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # compute reward:
         reward = self._update_state(action)
 
-        # create an observation from the environment state:
+        # get the observation from the environment state:
         observation = self._get_observation()
+        if self._observation_noise is not None:
+            # add noise
+            observation = observation + self._observation_noise()
+            observation.clip(self.observation_space.low, self.observation_space.high)
 
         # Is it done?:
         done = self._is_done()
@@ -602,9 +657,13 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # init environment state:
         self._init_state()
 
-        # create an observation from the environment state:
+        # get the observation from the environment state:
         observation = self._get_observation()
-        assert self.observation_space.contains(observation)
+        if self._observation_noise is not None:
+            # add noise
+            observation = observation + self._observation_noise()
+            observation.clip(self.observation_space.low, self.observation_space.high)
+        assert self.observation_space.contains(observation), observation.dtype
 
         # ask the rendering engine to reset the screen:
         self._rendering_reset_request = True
@@ -942,7 +1001,12 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
     @override
     def _get_observation(self) -> np.ndarray:
-        """create an observation from the environment state"""
+        """Get the observation (without noise) from the environment state.
+
+        Note: the noise will be added by the step() and reset() methods if an
+            ``observation_noise`` argument was provided when the environment
+            was constructed.
+        """
         points = self._get_observation_points()
         obs = np.empty((*self.observation_space.shape[:-1], self._n_channels), dtype=self.observation_space.dtype)
         for i in range(self.observation_space.shape[0]):
@@ -1070,122 +1134,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 raise ValueError(f"item: Literal['agent', 'food'], got {item!r} instead.")
         return bool(res)
 
-    # todo: you can move this in geometry (with a general polygon, i.e. platform)
-    #  and here just do a wrapper that uses self protected variables.
     def _get_random_non_overlapping_positions(self,
                                               n,
                                               radius: Union[list, int],
-                                              platform=None,
                                               ) -> list[Pos]:
-        def is_valid_polygon_position(env, pos: Union[Point, Polygon]):
-            if not isinstance(pos, (Point, Polygon)):
-                raise TypeError('`pos` should be an instance of Point or Polygon')
-            if pos.has_z:
-                raise ValueError('`pos` should be 2D (and without channels)')
-            return env._platform.covers(pos)
-
-        if isinstance(radius, int):
-            radius = [radius] * n
-        if n != len(radius):
-            raise ValueError(f"`radius` should be int or a list of `n` integers, "
-                             f"instead has {len(radius)} elements.")
-        assert 2 == len(self._env_size), self._env_size
-
-        # more efficient and always ending version:  # todo: test it with polygons with holes
-
-        epsilon = max(np.finfo(np.float32).resolution * (3 * 10), .0001)
-        init_platform = self._platform if platform is None else platform
-        rng = self.env_space.np_random
-
-        poses = []
-        # chosen = []  # polygons already positioned
-        chosen = unary_union([])  # polygons already positioned
-        for i, r in enumerate(radius):
-
-            # select the platform and take only the available parts:
-            platform = init_platform.difference(chosen)  # unary_union(chosen))
-
-            # reduce the platform by the radius of the new object (it could be Polygon or MultiPolygon):
-            platform = platform.buffer(-r)  # - epsilon * r)
-            assert isinstance(platform, (Polygon, MultiPolygon)), type(platform)
-            # print(platform.boundary.wkt)
-            # print(f" platform_area_remained={platform.area}")
-            if platform.is_empty:
-                raise RuntimeError("There is not enough space to fit all the figures in the environment.")
-
-            # divide the platform in triangles:
-            triangles = triangulate_nonconvex_polygon(platform)
-            # print('Triangles:\n\t' + '\n\t'.join(tr.wkt for tr in triangles))
-
-            # choose randomly a triangle proportionally to its area:
-            probs = np.asarray([tr.area for tr in triangles])
-            probs /= probs.sum(None)
-            tr = rng.choice(triangles, p=probs)
-
-            # pick a random point in this triangle:
-            pt = self._get_random_point_in_triangle(tr, rng)
-
-            # create object, update poses and chosen:
-            pt_buff = pt.buffer(r)  # + epsilon * r)
-            poses.append(pt)
-            chosen = chosen.union(pt_buff)  # chosen.append(pt_buff)
-
-        assert n == len(poses) == len(radius)
-        # # plotting during debug:
-        # fig, ax = plt.subplots()
-        # gpd.GeoSeries(init_platform.boundary).plot(ax=ax, color='k')
-        # gpd.GeoSeries(platform.buffer(0)).plot(ax=ax, color='b')
-        # gpd.GeoSeries([tr.boundary for tr in triangles]).plot(ax=ax, color='gray')
-        # gpd.GeoSeries([Point(p) for p in poses]).plot(ax=ax, color='r')
-        # plt.show()
-        assert all(is_valid_polygon_position(self, pos.buffer(r)) for pos, r in zip(poses, radius)), (
-            [p.wkt for p, r in zip(poses, radius) if not is_valid_polygon_position(self, p.buffer(r))],
-            [p.wkt for p in poses])
-        return [Pos(p.x, p.y) for p in poses]
-
-    @staticmethod
-    def _get_random_point_in_triangle(triangle, random_generator) -> Point:
-
-        epsilon = np.finfo(np.float32).resolution * (3 * 10)
-
-        if not isinstance(random_generator, np.random.Generator):
-            raise TypeError("'random_state' is not a np.random.Generator object"
-                            f", the object provided is of type {type(random_generator)} instead.")
-        if not isinstance(triangle, Polygon):
-            raise TypeError("'triangle' is not a Polygon object")
-        if not is_triangle(triangle):
-            raise ValueError("'triangle' is not a triangle")
-        if triangle.has_z:
-            raise ValueError("only 2D is implemented")
-
-        # translate triangle to origin, get a and b vectors or the space:
-        coords = np.asarray(triangle.boundary.coords)
-        assert 4 == len(coords), coords
-        assert np.array_equal(coords[0], coords[-1]), coords
-        orig = coords[0].copy()
-        coords -= orig
-        assert np.array_equal(coords[0], (0, 0)), coords
-        a = coords[1]
-        b = coords[2]
-
-        # generate random point in the space parallelogram:
-        # uniform [0, 1)  # [0,1] would be better, but anyway changed for floating point precision errors, so no problem
-        u1, u2 = random_generator.random(2)  # * (1 - epsilon * 2) + epsilon
-
-        # if point outside triangle (2nd half of parallelogram) map in the triangle (1st half of parallelogram):
-        if u1 + u2 > 1:
-            u1 = 1 - u1
-            u2 = 1 - u2
-
-        # linear combination of a and b:
-        pnt = u1 * a + u2 * b
-
-        # translate back to original position:
-        pnt += orig
-
-        pnt = Point(pnt)
-        # Note: take in account floating point precision errors -> epsilon
-        assert triangle.intersects(pnt), (pnt.wkt, triangle.boundary.coords[:])
-        # print(pnt)
-        return pnt
-
+        return get_random_non_overlapping_positions(
+            n, radius, self._platform, self._env_size, self.env_space.np_random)

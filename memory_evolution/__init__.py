@@ -14,6 +14,9 @@ __version__ = "0.0.0"
 
 from . import agents
 from . import envs
+from . import evaluate
 from . import geometry
 from . import utils
+
+from .evaluate import evaluate_agent
 

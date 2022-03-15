@@ -19,7 +19,8 @@ from gym.utils.env_checker import check_env  # from stable_baselines.common.env_
 
 from memory_evolution.agents import BaseAgent, RnnNeatAgent, CtrnnNeatAgent
 from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze
-from memory_evolution.utils import evaluate_agent, set_main_logger
+from memory_evolution.evaluate import evaluate_agent
+from memory_evolution.utils import set_main_logger
 
 # matplotlib settings:
 mpl.use('Qt5Agg')  # Change matplotlib backend to show correctly in PyCharm.

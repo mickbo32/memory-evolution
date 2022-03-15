@@ -87,6 +87,8 @@ def evaluate_agent(agent,
         # anyway it will be created in /tmp/, which is cleaned by the os when
         # restarting.
         save_gif_dir = os.path.join(temp_dir.name, 'frames')
+        logging.debug(f"temp_dir: {temp_dir!r}")
+        logging.debug(f"save_gif_dir: {save_gif_dir!r}")
     episode_str = ''
     rendering_mode = ''
     if render:
@@ -184,7 +186,7 @@ def evaluate_agent(agent,
                 f" (in {actual_time} actual seconds)."
                 #"\n"
             )
-            logging.debug('\n\t' + '\n\t'.join(msg.split('\n')))
+            logging.log(logging.DEBUG + 5, '\n\t' + '\n\t'.join(msg.split('\n')))
             if render:
                 print(msg, end='\n\n')
             if save_gif:
@@ -192,7 +194,9 @@ def evaluate_agent(agent,
                 if episode_str:
                     root, ext = os.path.splitext(save_gif_name)
                     gifname = root + episode_str + ext
-                memory_evolution.utils.generate_gif_from_path(save_gif_dir + (episode_str if keep_frames else ''),
+                frames_dir = save_gif_dir + (episode_str if keep_frames else '')
+                logging.debug(f"gifname: {gifname};  frames_dir: {frames_dir};")
+                memory_evolution.utils.generate_gif_from_path(frames_dir,
                                                               gif_name=gifname,
                                                               remove_frames=(not keep_frames),
                                                               save_gif_in_frames_dir=keep_frames,

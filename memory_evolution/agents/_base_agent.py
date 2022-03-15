@@ -23,7 +23,7 @@ from shapely.affinity import rotate, scale, translate
 from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiPoint, MultiPolygon
 from shapely.ops import unary_union, triangulate
 
-from memory_evolution.utils import evaluate_agent
+from memory_evolution.evaluate import evaluate_agent
 from memory_evolution.utils import MustOverride, override
 from .exceptions import EnvironmentNotSetError
 
