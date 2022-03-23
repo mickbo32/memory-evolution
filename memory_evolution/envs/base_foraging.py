@@ -32,9 +32,35 @@ from memory_evolution.utils import MustOverride, override
 import geopandas as gpd
 
 
-def get_env2win_scaling_factor(window_size, env_size
-                               ) -> tuple:
+def check_scaling_factor_across_axes(window_size, env_size) -> Real:
+    """It raises an error if scaling factor is wrong across axes."""
+    msg_2d_error = 'Only 2D points implemented'
+    if len(window_size) != len(env_size):
+        raise "'window_size' and 'env_size' have different dimensions."
+    if len(window_size) != 2:
+        raise NotImplementedError(msg_2d_error)
+    base_sf = window_size[0] / env_size[0]
+    for ax in range(1, len(window_size)):
+        sf = window_size[ax] / env_size[ax]
+        if window_size[ax] != math.ceil(base_sf * env_size[ax]):
+            # height should be ceiled
+            raise ValueError(
+                f"'window_size' and 'env_size' should have the same"
+                f" scaling factor for width and height"
+                f" (taking in account that height is ceiled);\n"
+                f"\t\tinstead they have different scaling factors:"
+                f" {base_sf} and {sf} (former w.r.t. axis=0, latter w.r.t. axis={ax});\n"
+                f"\t\t'window_size': {window_size}\n"
+                f"\t\t'env_size': {env_size};\n"
+            )
+
+
+def get_env2win_scaling_factor(window_size, env_size, axis=0) -> Real:
     """Scaling factor to obtain a window distance starting from an env distance.
+
+    Note: with axis=1 there could be small approximation (depending on the environment used),
+        use it only to compute pixel's stuff for visualization,
+        in any other case better using axis=0 which should the True main scaling factor.
     
     Examples:
         Here an examples of how to obtain a window distance starting from a
@@ -45,18 +71,8 @@ def get_env2win_scaling_factor(window_size, env_size
         >>> env_distance = window_distance / get_env2win_scaling_factor(window_size, env_size)
 
     """
-    # if not math.isclose(window_size[0] / env_size[0], window_size[1] / env_size[1]):
-    if math.ceil(window_size[0] / env_size[0]) != window_size[1] / env_size[1]:
-        # height scaling factor could be ceiled
-        raise ValueError(
-            f"'window_size' and 'env_size' should have the same"
-            f" scaling factor for width and height"
-            f" (height scaling factor can be ceiled);"
-            f" instead they have different scaling factors:"
-            f" {window_size[0] / env_size[0]} and {window_size[1] / env_size[1]};"
-        )
-    # return the scaling factor without ceiling:
-    return window_size[0] / env_size[0]
+    # check of correctness of scaling factors along axes are not done here but in env.__init__ for efficiency purposes.
+    return window_size[axis] / env_size[axis]
 
 
 def get_point_env2win(point, window_size, env_size
@@ -64,7 +80,6 @@ def get_point_env2win(point, window_size, env_size
     """Take a point in the environment coordinate system
     and transform it in the window coordinate system (i.e. a pixel).
     """
-    env2win_scaling_factor = get_env2win_scaling_factor(window_size, env_size)
     msg_2d_error = 'Only 2D points implemented'
     msg_point_outside_env_error = (
         'point not in the environment (outside env_size);'
@@ -73,9 +88,14 @@ def get_point_env2win(point, window_size, env_size
         raise NotImplementedError(msg_2d_error)
     if not (0 <= point[0] <= env_size[0] and 0 <= point[1] <= env_size[1]):
         raise ValueError(msg_point_outside_env_error.format(point=point, env_size=env_size))
-    point = (point[0] * env2win_scaling_factor,
-             (env_size[1] - point[1]) * env2win_scaling_factor)
-    return tuple(int(x) for x in point)
+    point = (point[0] * get_env2win_scaling_factor(window_size, env_size, axis=0),
+             (env_size[1] - point[1]) * get_env2win_scaling_factor(window_size, env_size, axis=1))
+    # map the borders of env in the correct window pixel:
+    if point[0] == window_size[0]:
+        point = (point[0] - 1, point[1])
+    if point[1] == window_size[1]:
+        point = (point[0], point[1] - 1)
+    return int(point[0]), int(point[1])  # tuple(int(x) for x in point)
 
 
 def get_point_win2env(point, window_size, env_size
@@ -83,7 +103,6 @@ def get_point_win2env(point, window_size, env_size
     """Take a point in the window coordinate system (i.e. a pixel)
     and transform it in the environment coordinate system.
     """
-    env2win_scaling_factor = get_env2win_scaling_factor(window_size, env_size)
     msg_2d_error = 'Only 2D points implemented'
     msg_point_outside_env_error = 'point outside environment window'
     if len(point) != 2:
@@ -97,12 +116,8 @@ def get_point_win2env(point, window_size, env_size
     # get the centroid of the pixel:
     point = [x + .5 for x in point]
     assert 0 <= point[0] < window_size[0] and 0 <= point[1] < window_size[1], (point, window_size)
-    point = [point[0] / env2win_scaling_factor,
-             (window_size[1] - point[1]) / env2win_scaling_factor]
-    # since the pixels on the bottom of the window could be ceiled,
-    # 'win_point + .5' could be outside the env_size,
-    # thus clip the point to env_size:
-    point = [min(x, e) for x, e in zip(point, env_size)]
+    point = [point[0] / get_env2win_scaling_factor(window_size, env_size, axis=0),
+             (window_size[1] - point[1]) / get_env2win_scaling_factor(window_size, env_size, axis=1)]
     point = Pos(*point)
     return point
 
@@ -184,6 +199,9 @@ class CircleItem(pg.sprite.Sprite):
 
         # Create mask for correct collision detection
         self.mask = pg.mask.from_surface(self.image)
+        # print(size, (self.size_on_screen, self.size_on_screen),
+        #       (self.radius_on_screen, self.radius_on_screen), self.radius_on_screen)
+        # print(convert_pg_mask_to_array(self.mask))
         assert self.mask.get_at((0, 0)) == 0
         assert self.mask.get_at((self.radius_on_screen, self.radius_on_screen)) == 1
 
@@ -216,13 +234,11 @@ class CircleItem(pg.sprite.Sprite):
     def size_on_screen(self):
         env2win_scaling_factor = get_env2win_scaling_factor(
             window_size=self._env.window_size, env_size=self._env.env_size)
-        return self._size * env2win_scaling_factor
+        return math.ceil(self._size * env2win_scaling_factor)
 
     @property
     def radius_on_screen(self):
-        env2win_scaling_factor = get_env2win_scaling_factor(
-            window_size=self._env.window_size, env_size=self._env.env_size)
-        return self._radius * env2win_scaling_factor
+        return self.size_on_screen // 2
 
     @property
     def pos(self):
@@ -319,7 +335,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                  n_food_items: int = 3,
                  rotation_step: float = 20.,
                  forward_step: float = .01,
-                 agent_size: float = .05,
+                 agent_size: float = .10,
                  food_size: float = .05,
                  vision_depth: float = .2,
                  vision_field_angle: float = 180.,
@@ -392,6 +408,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                              if isinstance(window_size, Sequence)
                              else (window_size, math.ceil(window_size * self._env_size[1] / self._env_size[0])))
         assert 2 == len(self._env_size) == len(self._window_size)
+        check_scaling_factor_across_axes(self._window_size, self._env_size)
         self._env2win_resize_factor = get_env2win_scaling_factor(self._window_size, self._env_size)
         self._env_img_shape = (self._window_size[1], self._window_size[0], self._n_channels)  # array shape
         self._env_img_size = self._window_size  # pygame surface size
@@ -469,24 +486,6 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
         # parse observation noise generator tuple:
         if observation_noise is not None:
-            # obs_noise_err_msg = (  # todo: togli commento
-            #     "'observation_noise' should be an iterable which has as first element a string \n"
-            #     "    that refer to which method to use for random generations, picking it from \n"
-            #     "    a np.random.Generator, and the following elements are the arguments to \n"
-            #     "    that random generating method.\n"
-            #     "    e.g. "
-            # )
-            # valid_random_generation_methods = ['normal', 'uniform']
-            # obs_noise_err_msg = (
-            #     "'observation_noise' should be an iterable which has as first element a string \n"
-            #     "    that refer to which method to use for random number generation, the following \n"
-            #     "    elements are the arguments to that random number generating method chosen.\n"
-            #     f"    Valid random number generation methods are: {valid_random_generation_methods}\n"
-            #     "    Examples:\n"
-            #     "        observation_noise=('normal', 0.0, 1.0)  # normal distribution mean=0.0, std=1.0\n"
-            #     "        observation_noise=('uniform', 0.0, 1.0)  # uniform distribution [low=0.0, high=1.0)\n"
-            #     "\n"
-            # )
             obs_noise_err_msg = (
                 f"'observation_noise' not correct, see documentation of "
                 f"{__name__ if __name__ != '__main__' else ''}.{type(self).__qualname__}.__init__"
@@ -784,15 +783,13 @@ class BaseForagingEnv(gym.Env, MustOverride):
             env_size = self._env_size
         return window_size, env_size
 
-    def get_point_env2win(self, point
-                          ) -> tuple:
+    def get_point_env2win(self, point) -> tuple:
         """Take a point in the environment coordinate system
         and transform it in the window coordinate system (i.e. a pixel).
         """
         return get_point_env2win(point, self._window_size, self._env_size)
 
-    def get_point_win2env(self, point
-                          ) -> Pos:
+    def get_point_win2env(self, point) -> Pos:
         """Take a point in the window coordinate system (i.e. a pixel)
         and transform it in the environment coordinate system.
         """
@@ -850,12 +847,14 @@ class BaseForagingEnv(gym.Env, MustOverride):
         if n_random_positions:
             positions.extend(self._get_random_non_overlapping_positions(
                 n_random_positions,
-                [self._food_size / 2] * self._n_food_items + [self._agent_size / 2]))
+                [self._food_size / 2] * self._n_food_items + [self._agent_size / 2],
+                ['food'] * self._n_food_items + ['agent']))
         if self._init_food_positions is not None:
             positions.extend(self._init_food_positions)
 
         # init agent in a random position:
         pos = positions.pop()
+        assert self.is_valid_position(pos, 'agent'), (pos, self._agent_size / 2)
         hd = self.env_space.np_random.rand() * 360
         if self._agent is not None:
             self._agent.kill()
@@ -867,7 +866,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # init food items:
         self._food_items = []
         while positions:
-            self._food_items.append(FoodItem(positions.pop(), self._food_size, self.food_color, env=self))
+            pos = positions.pop()
+            assert self.is_valid_position(pos, 'food'), (pos, self._food_size / 2)
+            self._food_items.append(FoodItem(pos, self._food_size, self.food_color, env=self))
         assert isinstance(self._food_items[0], pg.sprite.Sprite)
         self._food_items_group.empty()  # remove all previous food item sprites from the group
         self._food_items_group.add(*self._food_items)
@@ -953,7 +954,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                     break  # first occurrence not valid stops the forward movement (i.e. collision)
             if win_valid_pos is not None:
                 valid_pos = self.get_point_win2env(win_valid_pos)
-        assert self.is_valid_position(valid_pos, 'agent'), (valid_pos, self._agent.radius)
+        assert self.is_valid_position(valid_pos, 'agent'), (valid_pos, win_pos, self._agent.radius)
         self._agent.pos = valid_pos
 
         # food collected?
@@ -992,12 +993,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
     @staticmethod
     def _is_food_item_collected(agent: Agent, food_item: FoodItem) -> bool:
         """Food item is collected when the agent step upon (or touches) the center of the food item."""
-        assert len(agent.pos) == 2, len(agent.pos)
-        x0, y0 = agent.pos
-        assert len(food_item.pos) == 2, len(food_item.pos)
-        x, y = food_item.pos
         # Is the food center inside (or on the border of) the agent circle?
-        return (x - x0) ** 2 + (y - y0) ** 2 <= agent.radius ** 2
+        return is_point_in_circle(food_item.pos, agent.radius, agent.pos)
 
     @override
     def _get_observation(self) -> np.ndarray:
@@ -1137,6 +1134,14 @@ class BaseForagingEnv(gym.Env, MustOverride):
     def _get_random_non_overlapping_positions(self,
                                               n,
                                               radius: Union[list, int],
+                                              items=None,
                                               ) -> list[Pos]:
-        return get_random_non_overlapping_positions(
-            n, radius, self._platform, self._env_size, self.env_space.np_random)
+        # todo: try both methods, cache the time they take, and use the more efficient
+        #  (or chose by calculating free area)
+        # return get_random_non_overlapping_positions_with_triangulation(
+        #     n, radius, self._platform, self._env_size, self.env_space.np_random)
+        return get_random_non_overlapping_positions_with_lasvegas(
+            n, radius, self._platform, self._env_size, self.env_space.np_random,
+            self, items,
+        )
+

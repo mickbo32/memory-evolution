@@ -384,17 +384,64 @@ def triangulate_nonconvex_polygon(polygon: Union[Polygon, MultiPolygon]):
     return triangles
 
 
-def get_random_non_overlapping_positions(n,
-                                         radius: Union[list, int],
-                                         platform,
-                                         env_size,
-                                         random_generator,
-                                         ) -> list[Pos]:
+def get_random_point_in_triangle(triangle, random_generator) -> Point:
+
+    epsilon = np.finfo(np.float32).resolution * (3 * 10)
+
+    if not isinstance(random_generator, np.random.Generator):
+        raise TypeError("'random_state' is not a np.random.Generator object"
+                        f", the object provided is of type {type(random_generator)} instead.")
+    if not isinstance(triangle, Polygon):
+        raise TypeError("'triangle' is not a Polygon object")
+    if not is_triangle(triangle):
+        raise ValueError("'triangle' is not a triangle")
+    if triangle.has_z:
+        raise ValueError("only 2D is implemented")
+
+    # translate triangle to origin, get a and b vectors or the space:
+    coords = np.asarray(triangle.boundary.coords)
+    assert 4 == len(coords), coords
+    assert np.array_equal(coords[0], coords[-1]), coords
+    orig = coords[0].copy()
+    coords -= orig
+    assert np.array_equal(coords[0], (0, 0)), coords
+    a = coords[1]
+    b = coords[2]
+
+    # generate random point in the space parallelogram:
+    # uniform [0, 1)  # [0,1] would be better, but anyway changed for floating point precision errors, so no problem
+    u1, u2 = random_generator.random(2)  # * (1 - epsilon * 2) + epsilon
+
+    # if point outside triangle (2nd half of parallelogram) map in the triangle (1st half of parallelogram):
+    if u1 + u2 > 1:
+        u1 = 1 - u1
+        u2 = 1 - u2
+
+    # linear combination of a and b:
+    pnt = u1 * a + u2 * b
+
+    # translate back to original position:
+    pnt += orig
+
+    pnt = Point(pnt)
+    # Note: take in account floating point precision errors -> epsilon
+    assert triangle.intersects(pnt), (pnt.wkt, triangle.boundary.coords[:])
+    # print(pnt)
+    return pnt
+
+
+def get_random_non_overlapping_positions_with_triangulation(
+        n,
+        radius: Union[list, int],
+        platform,
+        env_size,
+        random_generator,
+) -> list[Pos]:
     def _is_valid_polygon_position(platform, pos: Union[Point, Polygon]):
         if not isinstance(pos, (Point, Polygon)):
-            raise TypeError('`pos` should be an instance of Point or Polygon')
+            raise TypeError("'pos' should be an instance of Point or Polygon")
         if pos.has_z:
-            raise ValueError('`pos` should be 2D (and without channels)')
+            raise ValueError("'pos' should be 2D (and without channels)")
         return platform.covers(pos)
 
     if not isinstance(random_generator, np.random.Generator):
@@ -403,7 +450,7 @@ def get_random_non_overlapping_positions(n,
     if isinstance(radius, int):
         radius = [radius] * n
     if n != len(radius):
-        raise ValueError(f"`radius` should be int or a list of `n` integers, "
+        raise ValueError(f"'radius' should be int or a list of 'n' integers, "
                          f"instead has {len(radius)} elements.")
     assert 2 == len(env_size), env_size
 
@@ -459,48 +506,143 @@ def get_random_non_overlapping_positions(n,
     return [Pos(p.x, p.y) for p in poses]
 
 
-def get_random_point_in_triangle(triangle, random_generator) -> Point:
+def is_point_in_circle(point, radius, origin=(0, 0)) -> bool:
+    """Returns True if ``point`` is inside or on the border of a circle
+    of radius ``radius`` and origin ``origin``."""
+    if len(point) != 2 or len(origin) != 2:
+        raise NotImplementedError("Only 2D geometry is implemented.")
+    x0, y0 = origin
+    x, y = point
+    return (x - x0) ** 2 + (y - y0) ** 2 <= radius ** 2
 
-    epsilon = np.finfo(np.float32).resolution * (3 * 10)
+
+def get_random_non_overlapping_positions_with_lasvegas(
+        n,
+        radius: Union[list, int],
+        platform,
+        env_size,
+        random_generator,
+        # epsilon=0,  # max(np.finfo(np.float32).resolution * (3 * 10), .0001),
+        _env=None,
+        _env_items=None,
+) -> list[Pos]:
+    assert _env is None and _env_items is None or _env is not None and _env_items is not None, (_env, _env_items)
+    assert _env_items is not None and len(_env_items) == n, (_env_items, n)
+
+    def _is_valid_polygon_position(platform, pos: Union[Point, Polygon]):
+        if not isinstance(pos, (Point, Polygon)):
+            raise TypeError("'pos' should be an instance of Point or Polygon")
+        if pos.has_z:
+            raise ValueError("'pos' should be 2D (and without channels)")
+        return platform.covers(pos)
 
     if not isinstance(random_generator, np.random.Generator):
         raise TypeError("'random_state' is not a np.random.Generator object"
                         f", the object provided is of type {type(random_generator)} instead.")
-    if not isinstance(triangle, Polygon):
-        raise TypeError("'triangle' is not a Polygon object")
-    if not is_triangle(triangle):
-        raise ValueError("'triangle' is not a triangle")
-    if triangle.has_z:
-        raise ValueError("only 2D is implemented")
+    if isinstance(radius, int):
+        radius = [radius] * n
+    if n != len(radius):
+        raise ValueError(f"'radius' should be int or a list of 'n' integers, "
+                         f"instead has {len(radius)} elements.")
+    if n <= 0:
+        raise ValueError(f"'n' should be greater or equal to 1 (n={n}).")
+    assert 2 == len(env_size), env_size
 
-    # translate triangle to origin, get a and b vectors or the space:
-    coords = np.asarray(triangle.boundary.coords)
-    assert 4 == len(coords), coords
-    assert np.array_equal(coords[0], coords[-1]), coords
-    orig = coords[0].copy()
-    coords -= orig
-    assert np.array_equal(coords[0], (0, 0)), coords
-    a = coords[1]
-    b = coords[2]
+    def get_reduced_platform(init_platform, chosen, r):
+        # select the platform and take only the available parts:
+        platform = init_platform.difference(chosen)  # unary_union(chosen))
 
-    # generate random point in the space parallelogram:
-    # uniform [0, 1)  # [0,1] would be better, but anyway changed for floating point precision errors, so no problem
-    u1, u2 = random_generator.random(2)  # * (1 - epsilon * 2) + epsilon
+        # reduce the platform by the radius of the new object (it could be Polygon or MultiPolygon):
+        platform = platform.buffer(-r)  # - epsilon * r)
+        assert isinstance(platform, (Polygon, MultiPolygon)), type(platform)
+        # print(platform.boundary.wkt)
+        # print(f" platform_area_remained={platform.area}")
+        if platform.is_empty:
+            raise RuntimeError("There is not enough space to fit all the figures in the environment.")
 
-    # if point outside triangle (2nd half of parallelogram) map in the triangle (1st half of parallelogram):
-    if u1 + u2 > 1:
-        u1 = 1 - u1
-        u2 = 1 - u2
+        return platform
 
-    # linear combination of a and b:
-    pnt = u1 * a + u2 * b
+    init_platform = platform
+    poses = []
+    chosen = unary_union([])  # polygons already positioned
+    i = 0
+    update_platform = True
+    while i < len(radius):
 
-    # translate back to original position:
-    pnt += orig
+        # compute available parts of platform:
+        if update_platform:
+            r = radius[i]
+            platform = get_reduced_platform(init_platform, chosen, r)
 
-    pnt = Point(pnt)
-    # Note: take in account floating point precision errors -> epsilon
-    assert triangle.intersects(pnt), (pnt.wkt, triangle.boundary.coords[:])
-    # print(pnt)
-    return pnt
+        # pick a random point inside env_size:
+        # note: rng.random() choose in the range [0,1), thus will never pick 1, but this is not a problem
+        x = random_generator.random() * env_size[0]
+        y = random_generator.random() * env_size[1]
+        pt = Point(x, y)
+
+        # check if point is valid: if valid, update poses and chosen:
+        if (platform.covers(pt)
+                and (_env is None or _env.is_valid_position((pt.x, pt.y), _env_items[i], is_env_pos=True))):
+            # the check with env is important to compensate for pixel approximations.
+
+            # update poses and chosen:
+            pt_buff = pt.buffer(r)  # + epsilon * r)
+            poses.append(pt)
+            chosen = chosen.union(pt_buff)
+
+            # update counter (and update_platform flag):
+            update_platform = True
+            i += 1
+
+    assert n == len(poses) == len(radius)
+    assert all(_is_valid_polygon_position(init_platform, pos.buffer(r)) for pos, r in zip(poses, radius)), (
+        [(p.wkt, r) for p, r in zip(poses, radius) if not _is_valid_polygon_position(init_platform, p.buffer(r))])
+    return [Pos(p.x, p.y) for p in poses]
+
+
+"""
+# wrong:
+def get_random_non_overlapping_positions_with_lasvegas(
+        env: memory_evolution.envs.BaseForagingEnv,
+        n,
+        items_type: Union[list, str],
+        items_radius: dict,
+) -> list[Pos]:
+    env_size = env.env_size
+
+    if isinstance(items_type, str):
+        items_type = [items_type] * n
+    if n != len(items_type):
+        raise ValueError(f"'radius' should be int or a list of 'n' integers, "
+                         f"instead has {len(items_type)} elements.")
+    assert 2 == len(env_size), env_size
+
+    rng = env.env_space.np_random
+
+    poses = []  # to preserve the order
+    # chosen = set()  # to check fastly if new pos was already taken
+    i = 0
+    while i < len(items_type):
+        ity = items_type[i]
+
+        # pick a random point inside env_size:
+        # Note: rng.random() choose in the range [0,1), thus will never pick 1,
+        # but this is problem that can be ignored safely.
+        x = rng.random() * env_size[0]
+        y = rng.random() * env_size[1]
+        pt = Pos(x, y)
+
+        # check if point is valid and new: if valid and new, update poses and chosen:
+        if env.is_valid_position(pt, ity, is_env_pos=True):
+            # todo: improve this
+            for j, p in enumerate(poses):
+                if is_point_in_circle(pt, items_radius[])
+            else:
+                i += 1
+                poses.append(pt)
+                # chosen.add(pt)
+
+    assert n == len(poses) == len(items_type)
+    return poses
+"""
 

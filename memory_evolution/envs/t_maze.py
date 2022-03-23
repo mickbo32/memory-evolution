@@ -27,7 +27,7 @@ class TMaze(MazeForagingEnv):
 
     def __init__(self,
                  corridor_width: Real = .2,
-                 window_size: Union[int, Sequence[int]] = 640,  # (640, 480),
+                 window_size: Union[int, Sequence[int]] = 320,
                  env_size: Union[float, Sequence[float]] = 1.,
                  *args,
                  **kwargs

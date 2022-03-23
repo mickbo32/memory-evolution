@@ -359,7 +359,7 @@ class BaseNeatAgent(BaseAgent, ABC):
             print("Restoring checkpoint and running up to 10 generations:")
             p = neat.Checkpointer.restore_checkpoint(
                 make_filename(f'neat-checkpoint-{last_cp_gen}'))
-            p.run(self.eval_genomes, max(1, min(10, last_cp_gen // 3)))
+            p.run(self.eval_genomes, min(10, max(1, last_cp_gen // 4)))
 
         self._render = prev_rendering_option
         return winner, stats
