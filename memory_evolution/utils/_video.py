@@ -21,9 +21,10 @@ def generate_gif_from_path(frames_dir,
     and ``gif_name`` it is just a name, the gif will be saved
     in the current working directory).
 
-    **kwargs are passed to iio.get_writer(), e.g. duration=5 or fps=2
+    **kwargs are passed to iio.get_writer(), e.g. duration=0.04 or fps=25
     """
-    print(frames_dir, gif_name)
+    print(f"frames_dir: {frames_dir}")
+    print(f"gif_name: {gif_name}")
     if not gif_name.endswith('.gif'):
         raise ValueError("gif name should ends with '.gif'")
     # frames_filenames = sorted(os.listdir(frames_dir))  # use os.walk() if you want to go inside subdirectories.

@@ -333,7 +333,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                  window_size: Union[int, Sequence[int]] = 320,  # (640, 480),
                  env_size: Union[float, Sequence[float]] = 1.,
                  n_food_items: int = 3,
-                 rotation_step: float = 20.,
+                 rotation_step: float = 15.,
                  forward_step: float = .01,
                  agent_size: float = .10,
                  food_size: float = .05,
@@ -905,7 +905,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         rotation_step = self._rotation_step * (action[0] * 2 - 1.)
         assert -1. * self._rotation_step <= rotation_step <= 1. * self._rotation_step, rotation_step
         # add initial rotation inertia
-        if abs(rotation_step) < self._rotation_step * .01:
+        if abs(rotation_step) < self._rotation_step * .02:
             logging.debug('rotation inertia hit')
             rotation_step = 0.
         self._agent.head_direction = (self._agent.head_direction

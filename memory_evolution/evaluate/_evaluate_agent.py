@@ -196,11 +196,24 @@ def evaluate_agent(agent,
                     gifname = root + episode_str + ext
                 frames_dir = save_gif_dir + (episode_str if keep_frames else '')
                 logging.debug(f"gifname: {gifname};  frames_dir: {frames_dir};")
+                gif_duration = actual_time / (step + 1)  # all steps plus the 0 step.
+                # gif duration needs to be at least 0.01, if it is less
+                # (and it will be kept only until the second decimal digit, thus round it to it)
+                # (instead of rounding all the same, you could use different duration of the first
+                # image and few others to encode the actual total duration (but then be careful when
+                # calculating FPS to convert the gif to video))
+                gif_duration = max(0.01, round(gif_duration, 2))
+                if gif_duration < 0.01:
+                    raise RuntimeError(f"gif_duration: {gif_duration}")
+                logging.info(f"Gif generated: gif_total_duration={gif_duration * (step + 1)}, "
+                             f"gif_duration={gif_duration}, but actual time was actual_time={actual_time}")
                 memory_evolution.utils.generate_gif_from_path(frames_dir,
                                                               gif_name=gifname,
                                                               remove_frames=(not keep_frames),
                                                               save_gif_in_frames_dir=keep_frames,
-                                                              duration=actual_time/(step+1))  # all steps plus the 0 step.
+                                                              duration=gif_duration)
+                # todo: sarebbe bene fare anche un video .mp4, però accertati che FPS in uscita siano e.g. 50 o 60,
+                #       e non 100+ come nella gif che semplicemente aggrega tutti i frames.
         else:
             raise RuntimeError(
                 f"Episode has not finished after {step} timesteps"

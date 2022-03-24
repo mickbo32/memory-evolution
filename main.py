@@ -160,7 +160,7 @@ if __name__ == '__main__':
     # env = BaseForagingEnv(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7) # todo: use in tests
     # env = TMaze(seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7, observation_noise=('normal', 0.0, 0.5))
     # env = TMaze(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
-    env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
+    env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=1000, vision_resolution=7)
     # env = TMaze(seed=42, agent_size=.10, n_food_items=10, max_steps=500, vision_resolution=7)
     logging.debug(env._seed)  # todo: use a variable seed (e.g.: seed=42; env=TMaze(seed=seed); logging.debug(seed)) for assignation of seed, don't access the internal variable
     print('observation_space:',
@@ -198,7 +198,7 @@ if __name__ == '__main__':
                                          UTCNOW + '_' + 'neat-checkpoint-'))
 
     agent.set_env(env)
-    winner = agent.evolve(render=0, checkpointer=checkpointer, parallel=1,
+    winner = agent.evolve(500, render=0, checkpointer=checkpointer, parallel=1,
                           filename_tag=UTCNOW + '_', path_dir=logging_dir, image_format='png')
     # fixme: todo: parallel=True use the same seed for the environment in each process
     #     (but for the agent is correct and different it seems)
