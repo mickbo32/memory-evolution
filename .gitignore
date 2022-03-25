@@ -3,9 +3,15 @@
 /_prove/
 *.log
 logs/
+
+!/logs/
+/logs/*
 !/logs/clean.sh
 !/logs/copy_all_gifs_and_convert.sh
-!/logs/saved logs/README.md
+
+!/logs/saved_logs/
+/logs/saved_logs/*
+!/logs/saved_logs/README.md
 
 
 # pycharm
