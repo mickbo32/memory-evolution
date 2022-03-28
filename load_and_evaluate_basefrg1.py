@@ -17,7 +17,7 @@ import pandas as pd
 
 from gym.utils.env_checker import check_env  # from stable_baselines.common.env_checker import check_env
 
-from memory_evolution.agents import BaseAgent, RnnNeatAgent, CtrnnNeatAgent
+from memory_evolution.agents import RandomActionAgent, RnnNeatAgent, CtrnnNeatAgent
 from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze
 from memory_evolution.evaluate import evaluate_agent
 from memory_evolution.utils import set_main_logger
@@ -29,8 +29,8 @@ mpl.use('Qt5Agg')  # Change matplotlib backend to show correctly in PyCharm.
 if __name__ == '__main__':
 
     # ----- Settings -----
-    LOAD_AGENT = '2022-03-13_183513.643804+0000'
-    LOAD_AGENT_DIR = "logs/saved logs/"
+    LOAD_AGENT = '2022-03-23_185500.926591+0000'
+    LOAD_AGENT_DIR = "logs/saved_logs/"
 
     # logging settings:
     logging_dir, UTCNOW = set_main_logger(file_handler_all=None, stdout_handler=logging.INFO)
@@ -70,14 +70,14 @@ if __name__ == '__main__':
     local_dir = os.path.dirname(__file__)
     config_path = os.path.join(local_dir, 'config-rnn')
 
-    # load from pickle:
-    with open(os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + "_genome.pickle"), "rb") as f:
-        genome = pickle.load(f)
-    agent = RnnNeatAgent(config_path, genome=genome)
+    # # load from pickle:
+    # with open(os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + "_genome.pickle"), "rb") as f:
+    #     genome = pickle.load(f)
+    # agent = RnnNeatAgent(config_path, genome=genome)
 
     # load from checkpoint:
     p = neat.Checkpointer.restore_checkpoint(
-        'logs/saved logs/2022-03-23_185500.926591+0000_neat-checkpoint-166')
+        os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_neat-checkpoint-166'))
     # pprint(p.population)
     pop = sorted([genome for id, genome in p.population.items() if genome.fitness is not None],
                  key=lambda x: -x.fitness)
@@ -92,9 +92,8 @@ if __name__ == '__main__':
 
     print('Evaluating agent ...\n')
 
-    from main import RandomAgent
-    RANDOM_AGENT_UTCNOW = 'RandomAgent_' + UTCNOW
-    # evaluate_agent(RandomAgent(env), env, episodes=2, render=True,
+    RANDOM_AGENT_UTCNOW = 'RandomActionAgent_' + UTCNOW
+    # evaluate_agent(RandomActionAgent(env), env, episodes=2, render=True,
     #                save_gif=True,
     #                save_gif_dir=os.path.join(logging_dir, 'frames_' + RANDOM_AGENT_UTCNOW),
     #                save_gif_name=RANDOM_AGENT_UTCNOW + '.gif')

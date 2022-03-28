@@ -1,6 +1,7 @@
 from . import exceptions
 
 from ._base_agent import BaseAgent
+from ._random_action_agent import RandomActionAgent
 
 from ._neat_base_agent import BaseNeatAgent
 from ._neat_nn_agent import RnnNeatAgent

@@ -18,10 +18,6 @@ import neat
 import numpy as np
 from numpy.random import SeedSequence, default_rng
 import pandas as pd
-import pygame
-from shapely.affinity import rotate, scale, translate
-from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiPoint, MultiPolygon
-from shapely.ops import unary_union, triangulate
 
 from memory_evolution.evaluate import evaluate_agent
 from memory_evolution.utils import MustOverride, override
@@ -70,3 +66,4 @@ class BaseAgent(ABC):
     def reset(self) -> None:
         """Reset the agent to an initial state ``t==0``."""
         pass
+

@@ -142,21 +142,6 @@ class BaseNeatAgent(BaseAgent, ABC):
         assert self._phenotype is not None, (self._genome, self._phenotype)
         return self._phenotype
 
-    # def get_eval_genome_func()
-    # @classmethod
-    def eval_genome(self, genome, config) -> float:
-        """Use the Agent network phenotype and the discrete actuator force function."""
-        assert genome is not None, self
-        assert self._env is not None, self
-        agent = type(self)(config, genome=genome)
-        agent.set_env(self.get_env())  # fixme: parallel execution should make a copy of env for each pool.
-        #                              # todo: is it doing this?
-        assert agent._genome is not None, agent
-        assert agent._phenotype is not None, agent
-        fitness = evaluate_agent(agent, self.get_env(),
-                                 episodes=2, render=self._render)
-        return fitness
-
     @abstractmethod
     def action(self, observation: np.ndarray) -> np.ndarray:
         """Overrides 'action()' method from base class.
@@ -181,6 +166,21 @@ class BaseNeatAgent(BaseAgent, ABC):
             )
         assert self._phenotype is not None, (self._genome, self._phenotype)
         return NotImplemented
+
+    # def get_eval_genome_func()
+    # @classmethod
+    def eval_genome(self, genome, config) -> float:
+        """Use the Agent network phenotype and the discrete actuator force function."""
+        assert genome is not None, self
+        assert self._env is not None, self
+        agent = type(self)(config, genome=genome)
+        agent.set_env(self.get_env())  # fixme: parallel execution should make a copy of env for each pool.
+        #                              # todo: is it doing this?
+        assert agent._genome is not None, agent
+        assert agent._phenotype is not None, agent
+        fitness = evaluate_agent(agent, self.get_env(),
+                                 episodes=2, render=self._render)
+        return fitness
 
     @abstractmethod
     def reset(self) -> None:

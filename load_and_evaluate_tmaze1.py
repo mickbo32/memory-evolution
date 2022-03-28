@@ -17,10 +17,12 @@ import pandas as pd
 
 from gym.utils.env_checker import check_env  # from stable_baselines.common.env_checker import check_env
 
-from memory_evolution.agents import BaseAgent, RnnNeatAgent, CtrnnNeatAgent
+from memory_evolution.agents import RandomActionAgent, RnnNeatAgent, CtrnnNeatAgent
 from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze
 from memory_evolution.evaluate import evaluate_agent
 from memory_evolution.utils import set_main_logger
+
+from memory_evolution.agents import RandomActionAgent
 
 # matplotlib settings:
 mpl.use('Qt5Agg')  # Change matplotlib backend to show correctly in PyCharm.
@@ -30,7 +32,7 @@ if __name__ == '__main__':
 
     # ----- Settings -----
     LOAD_AGENT = '2022-03-13_183513.643804+0000'
-    LOAD_AGENT_DIR = "logs/nb/"
+    LOAD_AGENT_DIR = "logs/saved_logs/"
 
     # logging settings:
     logging_dir, UTCNOW = set_main_logger(file_handler_all=None, stdout_handler=logging.INFO)
@@ -79,9 +81,8 @@ if __name__ == '__main__':
 
     print('Evaluating agent ...\n')
 
-    from main import RandomAgent
-    RANDOM_AGENT_UTCNOW = 'RandomAgent_' + UTCNOW
-    evaluate_agent(RandomAgent(env), env, episodes=2, render=True,
+    RANDOM_AGENT_UTCNOW = 'RandomActionAgent_' + UTCNOW
+    evaluate_agent(RandomActionAgent(env), env, episodes=2, render=True,
                    save_gif=True,
                    save_gif_dir=os.path.join(logging_dir, 'frames_' + RANDOM_AGENT_UTCNOW),
                    save_gif_name=RANDOM_AGENT_UTCNOW + '.gif')
