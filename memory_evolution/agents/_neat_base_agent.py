@@ -265,6 +265,7 @@ class BaseNeatAgent(BaseAgent, ABC):
                filename_tag: str = '',
                path_dir: str = '',
                image_format: str = 'svg',
+               render_best: bool = False,  # render the best agent
                ) -> tuple[neat.genome.DefaultGenome, neat.statistics.StatisticsReporter]:
         """Evolve a population of agents of the type of self and then return
         the best genome. The best genome is also saved in self. It returns also
@@ -345,21 +346,22 @@ class BaseNeatAgent(BaseAgent, ABC):
                               format=image_format)
 
         # Show output of the most fit genome against training data.
-        print('\nOutput:')
-        print('rendering one episode with the best agent...')
-        evaluate_agent(self, self.get_env(), episodes=1, render=True)
+        if render_best:
+            print('\nOutput:')
+            print('rendering one episode with the best agent...')
+            evaluate_agent(self, self.get_env(), episodes=1, render=True, save_gif=False)
 
-        # Try to reload population from a saved checkpointer and run evolution for few generations.
-        if checkpointer is not None and checkpointer.last_generation_checkpoint != -1:
-            last_cp_gen = checkpointer.last_generation_checkpoint
-            last_cp_time = checkpointer.last_time_checkpoint
-            last_cp_time_from_start = last_cp_time - start_time
-            print(f"Last checkpoint saved at generation #{last_cp_gen}"
-                  f" after {last_cp_time_from_start} seconds from start.")
-            print("Restoring checkpoint and running up to 10 generations:")
-            p = neat.Checkpointer.restore_checkpoint(
-                make_filename(f'neat-checkpoint-{last_cp_gen}'))
-            p.run(self.eval_genomes, min(10, max(1, last_cp_gen // 4)))
+        # # Try to reload population from a saved checkpointer and run evolution for few generations.
+        # if checkpointer is not None and checkpointer.last_generation_checkpoint != -1:
+        #     last_cp_gen = checkpointer.last_generation_checkpoint
+        #     last_cp_time = checkpointer.last_time_checkpoint
+        #     last_cp_time_from_start = last_cp_time - start_time
+        #     print(f"Last checkpoint saved at generation #{last_cp_gen}"
+        #           f" after {last_cp_time_from_start} seconds from start.")
+        #     print("Restoring checkpoint and running up to 10 generations:")
+        #     p = neat.Checkpointer.restore_checkpoint(
+        #         make_filename(f'neat-checkpoint-{last_cp_gen}'))
+        #     p.run(self.eval_genomes, min(10, max(1, last_cp_gen // 4)))
 
         self._render = prev_rendering_option
         return winner, stats

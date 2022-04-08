@@ -23,7 +23,7 @@ from shapely.ops import unary_union, triangulate
 
 # DEBUG:
 # shapely visualization on plt: (import also: import matplotlib.pyplot as plt)
-import geopandas as gpd
+# import geopandas as gpd
 
 
 class Pos:

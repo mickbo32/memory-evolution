@@ -28,9 +28,6 @@ from memory_evolution.geometry import *  # while developing I keep '*', then it 
 from memory_evolution.utils import *  # while developing I keep '*', then it will be imported only the stuff used
 from memory_evolution.utils import MustOverride, override
 
-# DEBUG:
-import geopandas as gpd
-
 
 def check_scaling_factor_across_axes(window_size, env_size) -> Real:
     """It raises an error if scaling factor is wrong across axes."""
@@ -595,7 +592,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
         return int(255 * transparency)
 
     def step(self, action) -> tuple[np.ndarray, Real, bool, dict]:
-        logging.debug('Step')
+        # logging.debug('Step')
+        self.debug_info['step']['running'] = True
+        self.debug_info['step']['count'] = self.step_count
         if not self.__has_been_ever_reset:
             self.reset()
         if not self.action_space.contains(action):
@@ -620,6 +619,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
         info = self._get_info()
 
         self.step_count += 1
+        self.debug_info['step']['count'] = self.step_count
+        self.debug_info['step']['running'] = False
         return observation, reward, done, info
 
     def reset(
@@ -629,6 +630,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         return_info: bool = False,
         options: Optional[dict] = None,
     ) -> Union[gym.core.ObsType, tuple[gym.core.ObsType, dict]]:
+        self.debug_info['reset']['running'] = True
 
         # reset init mandatory first due diligence:
         logging.debug('Reset')
@@ -667,6 +669,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # ask the rendering engine to reset the screen:
         self._rendering_reset_request = True
 
+        self.debug_info['reset']['running'] = False
         if not return_info:
             return observation
         else:
@@ -683,6 +686,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 be thrown.
         """
         logging.debug('Rendering')
+        self.debug_info['render']['running'] = True
         if self._rendering is False:
             self._rendering = True
             # Since I'm using pygame stuffs also for computing the environment,
@@ -747,6 +751,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 self.close()
                 sys.exit()
 
+        self.debug_info['render']['running'] = False
+
     def _check_quit_and_quit(self) -> None:
         for event in pg.event.get():
             if event.type == pg.QUIT:
@@ -758,9 +764,11 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # todo: as for files:
         #  A closed file cannot be read or written any more. Any operation, which requires that the file be opened
         #  will raise a ValueError after the file has been closed. Calling close() more than once is allowed.
+        self.debug_info['close']['running'] = True
         self.__has_been_ever_reset = False
         # pg.display.quit()
         pg.quit()
+        self.debug_info['close']['running'] = False
 
     def __get_sizes(self, window_size=None, env_size=None):  # todo: useless, remove it.
         """Returns window_size and env_size of the environment.

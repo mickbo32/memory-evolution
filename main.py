@@ -1,7 +1,10 @@
 import logging
+import multiprocessing
 import os
+import pickle
 from pprint import pprint
 import random  # neat uses random  # todo: allow seeding in neat
+import shutil
 import sys
 import time
 from typing import Optional
@@ -22,7 +25,9 @@ from memory_evolution.evaluate import evaluate_agent
 from memory_evolution.utils import set_main_logger
 
 # matplotlib settings:
-mpl.use('Qt5Agg')  # Change matplotlib backend to show correctly in PyCharm.
+isRunningInPyCharm = "PYCHARM_HOSTED" in os.environ
+if isRunningInPyCharm:
+    mpl.use('Qt5Agg')  # Change matplotlib backend to show correctly in PyCharm.
 
 
 if __name__ == '__main__':
@@ -31,8 +36,16 @@ if __name__ == '__main__':
 
     # logging settings:
     logging_dir, UTCNOW = set_main_logger(file_handler_all=None, stdout_handler=logging.INFO)
-    logging.debug(__file__)
-
+    logging.info(__file__)
+    
+    # get some stats:
+    version_msg = f"Python version\n{sys.version}\nVersion info\n{sys.version_info}\n"
+    logging.info(version_msg)
+    cpu_count = multiprocessing.cpu_count()
+    logging.info(f"CPU count: {cpu_count}\n")
+    cwd = os.getcwd()
+    logging.info(f"Current working directory: {cwd!r}\n")
+    
     # neat random seeding:
     random.seed(42)
     logging.debug(random.getstate())
@@ -60,6 +73,9 @@ if __name__ == '__main__':
           np.asarray(env.observation_space.shape).prod())
     check_env(env)  # todo: move in tests
     print('Env checked.')
+    # picKle env:
+    with open(os.path.join(logging_dir, UTCNOW + '_' + 'env.pickle'), "wb") as f:
+        pickle.dump(env, f)
 
     # print(env.action_space)  # Discrete(4)
     # print(env.observation_space)  # Box([[[0] ... [255]]], (5, 5, 1), uint8)
@@ -74,12 +90,18 @@ if __name__ == '__main__':
     # here so that the script will run successfully regardless of the
     # current working directory.
     local_dir = os.path.dirname(__file__)
-
     config_path = os.path.join(local_dir, 'config-rnn')
+    # logging: save current config file for later use:
+    shutil.copyfile(config_path, os.path.join(logging_dir, UTCNOW + '_' + 'config-rnn'))
+
     agent = RnnNeatAgent(config_path)
 
     # ----- MAIN LOOP -----
     # Evolve, interact, repeat.
+
+    # Rendering settings:
+    # render, parallel, render_best = 0, 1, 1    # local execution, show also stuff
+    render, parallel, render_best = 0, 1, 0    # remote execution, just save gifs
 
     # evaluate_agent(RandomActionAgent(env), env, episodes=2, render=True)
 
@@ -90,56 +112,18 @@ if __name__ == '__main__':
                                          UTCNOW + '_' + 'neat-checkpoint-'))
 
     agent.set_env(env)
-    winner = agent.evolve(500, render=0, checkpointer=checkpointer, parallel=1,
-                          filename_tag=UTCNOW + '_', path_dir=logging_dir, image_format='png')
+    winner = agent.evolve(500, render=render, checkpointer=checkpointer, parallel=parallel,
+                          filename_tag=UTCNOW + '_', path_dir=logging_dir, image_format='png',
+                          render_best=False)
     # fixme: todo: parallel=True use the same seed for the environment in each process
-    #     (but for the agent is correct and different it seems)
-    evaluate_agent(agent, env, episodes=2, render=True,
+    #     (but for the agent is correctly using a different seed it seems)
+
+    # render the best agent:
+    evaluate_agent(agent, env, episodes=2, render=render_best,
                    save_gif=True,
                    save_gif_name=os.path.join(logging_dir, 'frames_' + UTCNOW + '.gif'))
-    # run(env, episodes=2)
 
     # ----- CLOSING AND REPORTING -----
 
     env.close()
-
-
-'''
-Better efficiency:
-env = TMaze(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
-(parallel = False)
-
-* b163541 (HEAD -> main, origin/main, origin/HEAD) Merge branch 'continuous' into main Continuous environment and agents with evolution
-
-render = False
-Episode finished after 500 timesteps, for a total of 500 simulated seconds (in 7.13121553 actual seconds).
-
-render = True
-Episode finished after 500 timesteps, for a total of 500 simulated seconds (in 19.826593934 actual seconds).
-
-
-* ce3470d (continuous) big refactoring, environment efficiency improved, env_img, pixel space mask for valid positions, geometry, pygame sprites for items
-
-render = False
-Episode finished after 500 timesteps, for a total of 500 simulated seconds (in 1.843639818 actual seconds).
-
-render = True
-Episode finished after 500 timesteps, for a total of 500 simulated seconds (in 15.735012616 actual seconds).
-
-
-Note: on both tests here above with rendering True, the rendering was slow because of the external screen used,
-by using only the integrated screen of the pc the rendering time goes down to 19->14 and 15->3.5 respectively.
-
-
-* cd9570b
-
-render = False
-Episode finished after 500 timesteps, for a total of 500 simulated seconds (in 1.6946048 actual seconds).
-render = False;parallel=True
-Episode finished after 500 timesteps, for a total of 500 simulated seconds (in 3.641211265 actual seconds).
-
-render = True
-Episode finished after 500 timesteps, for a total of 500 simulated seconds (in 2.768054353 actual seconds).
-
-'''
 
