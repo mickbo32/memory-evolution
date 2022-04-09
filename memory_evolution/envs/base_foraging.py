@@ -1,7 +1,9 @@
+from copy import deepcopy
 import os
 from collections import defaultdict, Counter
 from collections.abc import Iterable, Sequence
 from functools import reduce
+import inspect
 import logging
 import math
 from numbers import Number, Real
@@ -312,6 +314,10 @@ class FoodItem(CircleItem):
         # self._self_repr_properties.append(NOTHING)
 
 
+def _constructor(cls, args, kwargs):
+    return cls(*args, **kwargs)
+
+
 # todo: rename simply ForagingEnv
 class BaseForagingEnv(gym.Env, MustOverride):
     """Custom Environment that follows gym interface,
@@ -325,6 +331,94 @@ class BaseForagingEnv(gym.Env, MustOverride):
     the correct valid positions for the new class.
     """
     metadata = {'render.modes': ['human', 'human+save[save_dir]', 'save[save_dir]']}
+
+    # def __new__(cls, *args, **kwargs):
+    #     """Constructor used to save init values used during construction and initialization of this object."""
+    #     obj = super().__new__(cls)
+    #     try:
+    #         ba = inspect.signature(obj.__init__).bind(*args, **kwargs)
+    #         ba.apply_defaults()
+    #         obj.__init__params__ = ba.arguments
+    #     except TypeError as err:
+    #         logging.warning(str(err) + ", an error should be raised when running the __init__() method")
+    #         obj.__init__params__ = None  # {}
+    #     else:  # add subclass default parameters as kwargs if not already present in kwargs
+    #         mro_it = iter(cls.__mro__)
+    #         _cls = next(mro_it)  # discard itself class
+    #         while _cls != BaseForagingEnv:
+    #             try:
+    #                 _cls = next(mro_it)
+    #             except StopIteration:
+    #                 raise AssertionError(f"{BaseForagingEnv.__qualname__} not found in {cls.__qualname__}.__mro__")
+    #             params = inspect.signature(_cls.__init__).parameters.values()
+    #             default_params = {p.name: p.default for p in params if p.default is not p.empty}
+    #             # add kwargs if not already present
+    #             for key, val in default_params.items():
+    #                 if key not in obj.__init__params__['kwargs']:
+    #                     obj.__init__params__['kwargs'][key] = val
+    #     logging.log(logging.DEBUG + 7,
+    #                 f"env: {cls.__module__}.{cls.__qualname__}("
+    #                 + ', '.join(f"{k}={v}" for k, v in obj.__init__params__.items())
+    #                 + ")")
+    #     return obj
+
+    def __new__(cls, *args, **kwargs):
+        """Constructor used to save init values used during construction and initialization of this object."""
+        obj = super().__new__(cls)
+        try:
+            ba = inspect.signature(obj.__init__).bind(*args, **kwargs)
+            ba.apply_defaults()
+            obj._init_params = ba
+        except TypeError as err:
+            logging.warning(str(err) + ", an error should be raised when running the __init__() method")
+            obj._init_params = None
+        else:  # add subclass default parameters as kwargs if not already present in kwargs
+            mro_it = iter(cls.__mro__)
+            _cls = next(mro_it)  # discard itself class
+            while _cls != BaseForagingEnv:
+                try:
+                    _cls = next(mro_it)
+                except StopIteration:
+                    raise AssertionError(f"{BaseForagingEnv.__qualname__} not found in {cls.__qualname__}.__mro__")
+                params = inspect.signature(_cls.__init__).parameters.values()
+                default_params = {p.name: p.default for p in params if p.default is not p.empty}
+                # add kwargs if not already present
+                for key, val in default_params.items():
+                    if key not in obj._init_params.arguments['kwargs']:
+                        obj._init_params.arguments['kwargs'][key] = val
+        logging.log(logging.DEBUG + 7,
+                    obj.__str__init_params__)
+        return obj
+
+    def __str__init_params__(self):
+        return (f"env: {type(self).__module__}.{type(self).__qualname__}("
+                + ', '.join(f"{k}={v}" for k, v in self._init_params.arguments.items())
+                + ")")
+
+    # def __getstate__(self):  # for pickle
+    #     assert hasattr(self, '_fpsClock')
+    #     state = self.__dict__.copy()
+    #     del state['_fpsClock']
+    #     surf = state.pop('_background_img')
+    #     state['_background_img'] = (pg.image.tostring(surf, "RGB"), surf.get_size())
+    #     # ...
+    #     return state
+    #
+    # def __setstate__(self, state):  # for pickle
+    #     state['_fpsClock'] = pg.time.Clock()
+    #     surface_string, size = state.pop('_background_img')
+    #     state['_background_img'] = pg.image.fromstring(surface_string, size, "RGB")
+    #     # ...
+    #     for name, value in state.items():
+    #         setattr(self, name, value)
+
+    def __reduce__(self):  # for pickle
+        # todo: use only kwargs? (it is safer and more consistent across time and versions,
+        #  but you need to remove *args in all possible subclass: you can do it for the class here,
+        #  but the user can always do in another way, thus: leave args here, take it out form subclasses you define)
+        args = self._init_params.args
+        kwargs = self._init_params.kwargs
+        return _constructor, (type(self), args, kwargs)
 
     def __init__(self,
                  window_size: Union[int, Sequence[int]] = 320,  # (640, 480),

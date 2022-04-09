@@ -92,3 +92,47 @@ def convert_pg_mask_to_array(mask):
     else:
         raise ValueError(f"{type(mask)!r} isn't a pygame.mask.Mask")
 
+
+class PickableClock:
+    """Pickable wrapper for pg.time.Clock
+
+    Note: this object is pickable only if no attribute have been accessed yet.
+    """
+
+    def __init__(self, *args, **kwargs):
+        self._args = args
+        self._kwargs = kwargs
+        self._clock = None
+
+    def __getattr__(self, name):
+        """Create an instance of pg.time.Clock only after the first
+        attribute access, return pg.time.Clock attribute values.
+        """
+        import traceback
+        if name.startswith('_'):
+            if name not in self.__dict__:
+                raise AttributeError(name, self)
+            return getattr(self, name)
+        else:
+            if self._clock is None:
+                clk = pg.time.Clock(*self._args, **self._kwargs)
+                assert not hasattr(clk, '_args')
+                assert not hasattr(clk, '_kwargs')
+                assert not hasattr(clk, '_clock')
+                self._clock = clk
+            return getattr(self._clock, name)
+
+    def __setattr__(self, name, value):
+        if name.startswith('_'):
+            super().__setattr__(name, value)
+        else:
+            clk = self._clock
+            setattr(clk, name, value)
+
+    def __dir__(self):
+        if self._clock is None:
+            return dir(pg.time.Clock)
+        else:
+            return dir(self._clock)
+
+

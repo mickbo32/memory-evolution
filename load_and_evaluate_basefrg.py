@@ -41,12 +41,14 @@ if __name__ == '__main__':
     assert (LOAD_FROM_PICKLE is None and LOAD_FROM_CHECK_POINT is not None
             or LOAD_FROM_PICKLE is not None and LOAD_FROM_CHECK_POINT is None)
     if LOAD_FROM_PICKLE is not None:
-        LOAD_FROM_PICKLE_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_FROM_PICKLE)
-        assert os.path.isfile(LOAD_FROM_PICKLE_PATH), LOAD_FROM_PICKLE
+        CONFIG_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_config')
+        LOAD_AGENT_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_FROM_PICKLE)
+        assert os.path.isfile(LOAD_AGENT_PATH), LOAD_AGENT_PATH
     if LOAD_FROM_CHECK_POINT is not None:
-        LOAD_FROM_CHECK_POINT = os.path.join(LOAD_AGENT_DIR, LOAD_FROM_CHECK_POINT)
-        assert os.path.isfile(LOAD_FROM_CHECK_POINT), LOAD_FROM_CHECK_POINT
+        LOAD_AGENT_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_FROM_CHECK_POINT)
+        assert os.path.isfile(LOAD_AGENT_PATH), LOAD_AGENT_PATH
 
+    LOAD_ENV = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_env.pickle')
 
     # logging settings:
     logging_dir, UTCNOW = set_main_logger(file_handler_all=None, stdout_handler=logging.INFO)
@@ -60,7 +62,9 @@ if __name__ == '__main__':
 
     # ----- ENVIRONMENT -----
 
-    env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=1000, vision_resolution=7)
+    with open(LOAD_ENV, "rb") as f:
+        env = pickle.load(f)
+    print(env.__str__init_params__)
     logging.debug(env._seed)  # todo: use a variable seed (e.g.: seed=42; env=TMaze(seed=seed); logging.debug(seed)) for assignation of seed, don't access the internal variable
     print('observation_space:',
           env.observation_space.shape,
@@ -68,22 +72,15 @@ if __name__ == '__main__':
 
     # ----- AGENT -----
 
-
     # load from pickle:
     if LOAD_FROM_PICKLE is not None:
-        # Determine path to configuration file. This path manipulation is
-        # here so that the script will run successfully regardless of the
-        # current working directory.
-        local_dir = os.path.dirname(__file__)
-        config_path = os.path.join(local_dir, 'config-rnn')
-
-        with open(LOAD_FROM_PICKLE_PATH, "rb") as f:
+        with open(LOAD_AGENT_PATH, "rb") as f:
             genome = pickle.load(f)
-        agent = RnnNeatAgent(config_path, genome=genome)
+        agent = RnnNeatAgent(CONFIG_PATH, genome=genome)
 
     # load from checkpoint:
     if LOAD_FROM_CHECK_POINT is not None:
-        p = neat.Checkpointer.restore_checkpoint(LOAD_FROM_CHECK_POINT)
+        p = neat.Checkpointer.restore_checkpoint(LOAD_AGENT_PATH)
         config = p.config
         # pprint(p.population)
         pop = sorted([genome for id, genome in p.population.items() if genome.fitness is not None],

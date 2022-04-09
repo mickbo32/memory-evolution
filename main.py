@@ -1,3 +1,4 @@
+import json
 import logging
 import multiprocessing
 import os
@@ -65,17 +66,23 @@ if __name__ == '__main__':
     # env = BaseForagingEnv(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7) # todo: use in tests
     # env = TMaze(seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7, observation_noise=('normal', 0.0, 0.5))
     # env = TMaze(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
-    env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=1000, vision_resolution=7)
+    env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
     # env = TMaze(seed=42, agent_size=.10, n_food_items=10, max_steps=500, vision_resolution=7)
     logging.debug(env._seed)  # todo: use a variable seed (e.g.: seed=42; env=TMaze(seed=seed); logging.debug(seed)) for assignation of seed, don't access the internal variable
     print('observation_space:',
           env.observation_space.shape,
           np.asarray(env.observation_space.shape).prod())
-    check_env(env)  # todo: move in tests
-    print('Env checked.')
     # picKle env:
     with open(os.path.join(logging_dir, UTCNOW + '_' + 'env.pickle'), "wb") as f:
         pickle.dump(env, f)
+    # check pickle env:  # todo: move in tests
+    with open(os.path.join(logging_dir, UTCNOW + '_' + 'env.pickle'), "rb") as f:
+        _loaded_env = pickle.load(f)
+        assert type(_loaded_env) is type(env)
+        assert _loaded_env._init_params == env._init_params
+    # check env:
+    check_env(env)  # todo: move in tests
+    print('Env checked.')
 
     # print(env.action_space)  # Discrete(4)
     # print(env.observation_space)  # Box([[[0] ... [255]]], (5, 5, 1), uint8)
@@ -92,7 +99,7 @@ if __name__ == '__main__':
     local_dir = os.path.dirname(__file__)
     config_path = os.path.join(local_dir, 'config-rnn')
     # logging: save current config file for later use:
-    shutil.copyfile(config_path, os.path.join(logging_dir, UTCNOW + '_' + 'config-rnn'))
+    shutil.copyfile(config_path, os.path.join(logging_dir, UTCNOW + '_' + 'config'))
 
     agent = RnnNeatAgent(config_path)
 
