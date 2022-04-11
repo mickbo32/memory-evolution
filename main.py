@@ -5,6 +5,7 @@ import os
 import pickle
 from pprint import pprint
 import random  # neat uses random  # todo: allow seeding in neat
+import re
 import shutil
 import sys
 import time
@@ -38,6 +39,20 @@ if __name__ == '__main__':
     # logging settings:
     logging_dir, UTCNOW = set_main_logger(file_handler_all=None, stdout_handler=logging.INFO)
     logging.info(__file__)
+
+    # if job_id is passed to the program, use it in the log tag:
+    JOB_ID = None
+    if len(sys.argv) == 1:
+        LOG_TAG = UTCNOW
+    elif len(sys.argv) == 2:
+        JOB_ID = str(sys.argv[1])
+        match = re.match(r"^([0-9]+).hpc-head-n1.unitn.it$", JOB_ID)
+        if match:
+            JOB_ID = match.group(1)  # type: str
+        LOG_TAG = JOB_ID + '_' + UTCNOW
+    else:
+        raise AssertionError(sys.argv)
+    logging.info('TAG: ' + LOG_TAG)
     
     # get some stats:
     version_msg = f"Python version\n{sys.version}\nVersion info\n{sys.version_info}\n"
@@ -66,17 +81,17 @@ if __name__ == '__main__':
     # env = BaseForagingEnv(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7) # todo: use in tests
     # env = TMaze(seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7, observation_noise=('normal', 0.0, 0.5))
     # env = TMaze(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
-    env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=400, vision_resolution=7)
+    env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
     # env = TMaze(seed=42, agent_size=.10, n_food_items=10, max_steps=500, vision_resolution=7)
     logging.debug(env._seed)  # todo: use a variable seed (e.g.: seed=42; env=TMaze(seed=seed); logging.debug(seed)) for assignation of seed, don't access the internal variable
     print('observation_space:',
           env.observation_space.shape,
           np.asarray(env.observation_space.shape).prod())
     # picKle env:
-    with open(os.path.join(logging_dir, UTCNOW + '_' + 'env.pickle'), "wb") as f:
+    with open(os.path.join(logging_dir, LOG_TAG + '_env.pickle'), "wb") as f:
         pickle.dump(env, f)
     # check pickle env:  # todo: move in tests
-    with open(os.path.join(logging_dir, UTCNOW + '_' + 'env.pickle'), "rb") as f:
+    with open(os.path.join(logging_dir, LOG_TAG + '_env.pickle'), "rb") as f:
         _loaded_env = pickle.load(f)
         assert type(_loaded_env) is type(env)
         assert _loaded_env._init_params == env._init_params
@@ -99,7 +114,7 @@ if __name__ == '__main__':
     local_dir = os.path.dirname(__file__)
     config_path = os.path.join(local_dir, 'config-rnn')
     # logging: save current config file for later use:
-    shutil.copyfile(config_path, os.path.join(logging_dir, UTCNOW + '_' + 'config'))
+    shutil.copyfile(config_path, os.path.join(logging_dir, LOG_TAG + '_config'))
 
     agent = RnnNeatAgent(config_path)
 
@@ -107,8 +122,15 @@ if __name__ == '__main__':
     # Evolve, interact, repeat.
 
     # Rendering settings:
-    # render, parallel, render_best = 0, 1, 1    # local execution, show also stuff
-    render, parallel, render_best = 0, 1, 0    # remote execution, just save gifs
+    if JOB_ID is None:  # local execution
+        # note: if you render all will be slow, but good for debugging
+        # note2: if you render all and if you minimize the window or you put it in a part of the screen not visible
+        #        the algorithm will go way faster, so you can make it faster and debugging
+        #        at your choice by knowing this.
+        render, parallel, render_best = True, False, True      # local execution, render all
+        # render, parallel, render_best = False, True, True     # local execution, show best
+    else:  # remote execution
+        render, parallel, render_best = False, True, False    # remote execution, just save gifs
 
     # evaluate_agent(RandomActionAgent(env), env, episodes=2, render=True)
 
@@ -116,11 +138,11 @@ if __name__ == '__main__':
                                      time_interval_seconds=300,
                                      filename_prefix=os.path.join(
                                          logging_dir,
-                                         UTCNOW + '_' + 'neat-checkpoint-'))
+                                         LOG_TAG + '_neat-checkpoint-'))
 
     agent.set_env(env)
-    winner = agent.evolve(500, render=render, checkpointer=checkpointer, parallel=parallel,
-                          filename_tag=UTCNOW + '_', path_dir=logging_dir, image_format='png',
+    winner = agent.evolve(1000, render=render, checkpointer=checkpointer, parallel=parallel,
+                          filename_tag=LOG_TAG + '_', path_dir=logging_dir, image_format='png',
                           render_best=False)
     # fixme: todo: parallel=True use the same seed for the environment in each process
     #     (but for the agent is correctly using a different seed it seems)
@@ -128,7 +150,7 @@ if __name__ == '__main__':
     # render the best agent:
     evaluate_agent(agent, env, episodes=2, render=render_best,
                    save_gif=True,
-                   save_gif_name=os.path.join(logging_dir, 'frames_' + UTCNOW + '.gif'))
+                   save_gif_name=os.path.join(logging_dir, LOG_TAG + '_frames.gif'))
 
     # ----- CLOSING AND REPORTING -----
 

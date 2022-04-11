@@ -332,36 +332,6 @@ class BaseForagingEnv(gym.Env, MustOverride):
     """
     metadata = {'render.modes': ['human', 'human+save[save_dir]', 'save[save_dir]']}
 
-    # def __new__(cls, *args, **kwargs):
-    #     """Constructor used to save init values used during construction and initialization of this object."""
-    #     obj = super().__new__(cls)
-    #     try:
-    #         ba = inspect.signature(obj.__init__).bind(*args, **kwargs)
-    #         ba.apply_defaults()
-    #         obj.__init__params__ = ba.arguments
-    #     except TypeError as err:
-    #         logging.warning(str(err) + ", an error should be raised when running the __init__() method")
-    #         obj.__init__params__ = None  # {}
-    #     else:  # add subclass default parameters as kwargs if not already present in kwargs
-    #         mro_it = iter(cls.__mro__)
-    #         _cls = next(mro_it)  # discard itself class
-    #         while _cls != BaseForagingEnv:
-    #             try:
-    #                 _cls = next(mro_it)
-    #             except StopIteration:
-    #                 raise AssertionError(f"{BaseForagingEnv.__qualname__} not found in {cls.__qualname__}.__mro__")
-    #             params = inspect.signature(_cls.__init__).parameters.values()
-    #             default_params = {p.name: p.default for p in params if p.default is not p.empty}
-    #             # add kwargs if not already present
-    #             for key, val in default_params.items():
-    #                 if key not in obj.__init__params__['kwargs']:
-    #                     obj.__init__params__['kwargs'][key] = val
-    #     logging.log(logging.DEBUG + 7,
-    #                 f"env: {cls.__module__}.{cls.__qualname__}("
-    #                 + ', '.join(f"{k}={v}" for k, v in obj.__init__params__.items())
-    #                 + ")")
-    #     return obj
-
     def __new__(cls, *args, **kwargs):
         """Constructor used to save init values used during construction and initialization of this object."""
         obj = super().__new__(cls)
@@ -394,23 +364,6 @@ class BaseForagingEnv(gym.Env, MustOverride):
         return (f"env: {type(self).__module__}.{type(self).__qualname__}("
                 + ', '.join(f"{k}={v}" for k, v in self._init_params.arguments.items())
                 + ")")
-
-    # def __getstate__(self):  # for pickle
-    #     assert hasattr(self, '_fpsClock')
-    #     state = self.__dict__.copy()
-    #     del state['_fpsClock']
-    #     surf = state.pop('_background_img')
-    #     state['_background_img'] = (pg.image.tostring(surf, "RGB"), surf.get_size())
-    #     # ...
-    #     return state
-    #
-    # def __setstate__(self, state):  # for pickle
-    #     state['_fpsClock'] = pg.time.Clock()
-    #     surface_string, size = state.pop('_background_img')
-    #     state['_background_img'] = pg.image.fromstring(surface_string, size, "RGB")
-    #     # ...
-    #     for name, value in state.items():
-    #         setattr(self, name, value)
 
     def __reduce__(self):  # for pickle
         # todo: use only kwargs? (it is safer and more consistent across time and versions,
@@ -451,7 +404,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
             agent_size: agent diameter.
             food_size: food item diameter.
             vision_depth: depth of the sight of the agent, each straight line of vision
-                    will be extended for a ``vision_depth`` length.
+                    will be extended for a ``vision_depth`` length (from agent center).
             vision_field_angle: angle of the full field of view of the agent.
             vision_resolution: how many sample to take for each straight line of vision,
                     i.e. the number of observation points will be
@@ -514,8 +467,13 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._vision_depth = vision_depth
         self._vision_field_angle = vision_field_angle
         self._vision_resolution = vision_resolution
-        vision_step = self._vision_depth / self._vision_resolution
-        gamma = math.degrees(2 * math.asin(vision_step / 2 / self._vision_depth))
+        self._vision_start = self._agent_size / 2 - self._food_size / 2
+        self._vision_start = min(self._vision_depth, max(0., self._vision_start))
+        vision_step = (self._vision_depth - self._vision_start) / self._vision_resolution
+        reference_depth = .66
+        distance_points_at_same_depth = vision_step
+        gamma = math.degrees(2 * math.asin((distance_points_at_same_depth / 2)
+                                           / (self._vision_depth * reference_depth)))
         self.vision_field_n_angles = int(self._vision_field_angle / gamma)
         # print('vision:', self._vision_depth, self._vision_field_angle, self._vision_resolution,
         #       vision_step, gamma, self.vision_field_n_angles)
@@ -1123,8 +1081,11 @@ class BaseForagingEnv(gym.Env, MustOverride):
         if self.__get_observation_points_cache.get('last_step_count', None) != self.step_count:
             self.__get_observation_points_cache['last_step_count'] = self.step_count
 
+            # Create a segment of length self._vision_depth from the agent center (offset self._vision_start)
+            #   with self._vision_resolution points,
+            #   the starting segment is parallel to x-axis (same direction of x-axis)
             line_endpoints = (
-                self._agent.pos,
+                (self._agent.pos[0] + self._vision_start, self._agent.pos[1]),
                 (self._agent.pos[0] + self._vision_depth, self._agent.pos[1])
             )
             span_x = np.linspace(line_endpoints[0][0], line_endpoints[1][0], num=self._vision_resolution, endpoint=True)
@@ -1134,11 +1095,18 @@ class BaseForagingEnv(gym.Env, MustOverride):
             line = np.column_stack((span_x, span_y))
             assert len(line) == self._vision_resolution
 
+            # Rotate the segment for self.vision_field_n_angles times between
+            #   "self._agent.head_direction + self._vision_field_angle / 2" and
+            #   "self._agent.head_direction - self._vision_field_angle / 2",
+            #   with agent center as rotation origin
+
+            # Compute absolute angles for rotation:
             angles = np.linspace(self._agent.head_direction + self._vision_field_angle / 2,
                                  self._agent.head_direction - self._vision_field_angle / 2,
                                  num=self.vision_field_n_angles, endpoint=True)
             assert len(angles) == self.vision_field_n_angles
 
+            # Rotate segments and put them in the observation matrix:
             points = np.empty((self._vision_resolution, self.vision_field_n_angles, 2), dtype=line.dtype)
             for j, alpha in enumerate(angles):
                 points[:, j] = transform.rotate(line, alpha, self._agent.pos)

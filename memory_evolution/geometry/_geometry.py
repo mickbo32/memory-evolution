@@ -1,3 +1,4 @@
+import time
 from collections import defaultdict, Counter
 from collections.abc import Sequence
 import logging
@@ -516,6 +517,7 @@ def is_point_in_circle(point, radius, origin=(0, 0)) -> bool:
     return (x - x0) ** 2 + (y - y0) ** 2 <= radius ** 2
 
 
+# todo: platform not needed
 def get_random_non_overlapping_positions_with_lasvegas(
         n,
         radius: Union[list, int],
@@ -525,7 +527,9 @@ def get_random_non_overlapping_positions_with_lasvegas(
         # epsilon=0,  # max(np.finfo(np.float32).resolution * (3 * 10), .0001),
         _env=None,
         _env_items=None,
+        # _avg_delta=[0, 0]
 ) -> list[Pos]:
+    # start = time.perf_counter()
     assert _env is None and _env_items is None or _env is not None and _env_items is not None, (_env, _env_items)
     assert _env_items is not None and len(_env_items) == n, (_env_items, n)
 
@@ -548,55 +552,48 @@ def get_random_non_overlapping_positions_with_lasvegas(
         raise ValueError(f"'n' should be greater or equal to 1 (n={n}).")
     assert 2 == len(env_size), env_size
 
-    def get_reduced_platform(init_platform, chosen, r):
-        # select the platform and take only the available parts:
-        platform = init_platform.difference(chosen)  # unary_union(chosen))
-
-        # reduce the platform by the radius of the new object (it could be Polygon or MultiPolygon):
-        platform = platform.buffer(-r)  # - epsilon * r)
-        assert isinstance(platform, (Polygon, MultiPolygon)), type(platform)
-        # print(platform.boundary.wkt)
-        # print(f" platform_area_remained={platform.area}")
-        if platform.is_empty:
-            raise RuntimeError("There is not enough space to fit all the figures in the environment.")
-
-        return platform
-
-    init_platform = platform
-    poses = []
-    chosen = unary_union([])  # polygons already positioned
-    i = 0
-    update_platform = True
-    while i < len(radius):
-
-        # compute available parts of platform:
-        if update_platform:
-            r = radius[i]
-            platform = get_reduced_platform(init_platform, chosen, r)
+    valid = False
+    while not valid:
+        valid = True
 
         # pick a random point inside env_size:
         # note: rng.random() choose in the range [0,1), thus will never pick 1, but this is not a problem
-        x = random_generator.random() * env_size[0]
-        y = random_generator.random() * env_size[1]
-        pt = Point(x, y)
+        x = random_generator.random(n) * env_size[0]
+        y = random_generator.random(n) * env_size[1]
 
-        # check if point is valid: if valid, update poses and chosen:
-        if (platform.covers(pt)
-                and (_env is None or _env.is_valid_position((pt.x, pt.y), _env_items[i], is_env_pos=True))):
-            # the check with env is important to compensate for pixel approximations.
+        if _env is not None:
+            for _x, _y, _env_item in zip(x, y, _env_items):
+                if not _env.is_valid_position((_x, _y), _env_item, is_env_pos=True):
+                    valid = False
+                    break
+        if not valid:
+            continue
+
+        poses = []
+        chosen = unary_union([])  # polygons already positioned
+        for _x, _y, r in zip(x, y, radius):
+            pt = Point(_x, _y)
 
             # update poses and chosen:
             pt_buff = pt.buffer(r)  # + epsilon * r)
+            if (pt_buff.intersects(chosen)
+                    # or not platform.covers(pt_buff)  # less efficient
+                    or not (r <= pt.x <= env_size[0] - r and r <= pt.y <= env_size[1] - r)  # more efficient
+            ):
+                valid = False
+                break
             poses.append(pt)
             chosen = chosen.union(pt_buff)
+        if not valid:
+            continue
 
-            # update counter (and update_platform flag):
-            update_platform = True
-            i += 1
-
+    # delta=time.perf_counter() - start
+    # _avg_delta[0]=(_avg_delta[0]*_avg_delta[1]+delta)/(_avg_delta[1]+1)
+    # _avg_delta[1]=_avg_delta[1]+1
+    # print('delta:', delta, '\t\tavg', _avg_delta[0])
     assert n == len(poses) == len(radius)
-    assert all(_is_valid_polygon_position(init_platform, pos.buffer(r)) for pos, r in zip(poses, radius)), (
-        [(p.wkt, r) for p, r in zip(poses, radius) if not _is_valid_polygon_position(init_platform, p.buffer(r))])
+    assert all(_is_valid_polygon_position(platform, pos.buffer(r)) for pos, r in zip(poses, radius)), (
+        [(p.wkt, r) for p, r in zip(poses, radius) if not _is_valid_polygon_position(platform, p.buffer(r))])
     return [Pos(p.x, p.y) for p in poses]
 
 

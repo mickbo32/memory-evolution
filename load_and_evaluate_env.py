@@ -114,6 +114,8 @@ if __name__ == '__main__':
 
     print('Evaluating agent ...\n')
 
+    # to do: tests of evaluate_agent: episodes=1 | episodes=2 ;
+
     RANDOM_AGENT_UTCNOW = 'RandomActionAgent_' + UTCNOW
     # evaluate_agent(RandomActionAgent(env), env, episodes=2, render=True,
     #                save_gif=True,
@@ -127,7 +129,7 @@ if __name__ == '__main__':
     #                save_gif=True,
     #                save_gif_dir=os.path.join(logging_dir, 'frames_' + LOADED_UTCNOW),
     #                save_gif_name=LOADED_UTCNOW + '.gif')
-    evaluate_agent(agent, env, episodes=N_EPISODES, render=0,
+    evaluate_agent(agent, env, episodes=N_EPISODES, render=True,
                    save_gif=True,
                    save_gif_name=os.path.join(logging_dir, 'frames_' + LOADED_UTCNOW + '.gif'))
     # Note: if you run twice evaluate_agent with the same name it will overwrite the previous gif
