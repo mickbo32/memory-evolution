@@ -795,13 +795,17 @@ class BaseForagingEnv(gym.Env, MustOverride):
         if self._rendering_reset_request:
             self._rendering_reset_request = False
             # init rendering engine:
-            # init window:
-            # logo = pg.image.load("logo32x32.png")
-            # pg.display.set_icon(logo)
-            pg.display.set_caption(f'{type(self).__qualname__}')
-            # init screen:
-            self._screen = pg.display.set_mode(self._window_size)
+            # init main screen (init window if game in human mode):
+            if mode == 'human' or re.search(r'^(?:.*\+)?human(?:\+.*)?$', mode):
+                # logo = pg.image.load("logo32x32.png")
+                # pg.display.set_icon(logo)
+                pg.display.set_caption(f'{type(self).__qualname__}')
+                # init screen:
+                self._screen = pg.display.set_mode(self._window_size)
+            else:
+                self._screen = pg.Surface(self._window_size, pg.SRCALPHA)
             self._screen.blit(self._background_img, (0, 0))
+
 
             # if 'save' mode, init save_dir:
             match = re.search(r'^(?:.*\+)?save\[(.*)](?:\+.*)?$', mode)
@@ -816,7 +820,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         if mode == 'human' or re.search(r'^(?:.*\+)?human(?:\+.*)?$', mode):
             pg.display.flip()  # pg.display.update()
 
-        # if in 'save' mode, save frames of the display.
+        # if in 'save' mode, save frames of the main screen.
         if mode != 'human':
             # you could also use mode.split('+') and then check separately the modes provided.
             match = re.search(r'^(?:.*\+)?save\[(.*)](?:\+.*)?$', mode)
@@ -860,7 +864,6 @@ class BaseForagingEnv(gym.Env, MustOverride):
         #  will raise a ValueError after the file has been closed. Calling close() more than once is allowed.
         self.debug_info['close']['running'] = True
         self.__has_been_ever_reset = False
-        # pg.display.quit()
         pg.quit()
         self.debug_info['close']['running'] = False
 

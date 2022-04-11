@@ -125,7 +125,7 @@ def evaluate_agent(agent,
             prev_episode_agent_pos = env_agent.pos
         assert env.t == 0., env.t
         fitness = 0.0  # food collected
-        if render:
+        if render or save_gif:
             # print(observation)
             env.render(mode=rendering_mode)
         step = 0
@@ -145,7 +145,7 @@ def evaluate_agent(agent,
             if isinstance(env, memory_evolution.envs.BaseForagingEnv):
                 assert env.step_count == step + 1, (env.step_count, step)
             fitness += reward
-            if render:
+            if render or save_gif:
                 logging.debug(f"Observation hash: {hash(observation.tobytes())}")
                 logging.debug(f"Action hash: {hash(action.tobytes())}")
                 # # print("Observation:", observation, sep='\n')

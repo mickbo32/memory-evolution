@@ -5,7 +5,8 @@ from pprint import pprint
 import random  # neat uses random  # todo: allow seeding in neat
 import sys
 import time
-from typing import Optional
+import typing
+from typing import Literal, Optional
 
 import gym
 import matplotlib as mpl
@@ -23,32 +24,46 @@ from memory_evolution.evaluate import evaluate_agent
 from memory_evolution.utils import set_main_logger
 
 # matplotlib settings:
-mpl.use('Qt5Agg')  # Change matplotlib backend to show correctly in PyCharm.
+isRunningInPyCharm = "PYCHARM_HOSTED" in os.environ
+if isRunningInPyCharm:
+    mpl.use('Qt5Agg')  # Change matplotlib backend to show correctly in PyCharm.
+
+# other consts:
+AVAILABLE_LOADING_METHODS = Literal['pickle', 'checkpoint']
 
 
 if __name__ == '__main__':
 
     # ----- Settings -----
-    LOAD_AGENT = '2022-04-07_155627.358378+0000'
-    LOAD_AGENT_DIR = "logs/saved_logs/"
+    LOAD_AGENT = '2022-04-09_203055.967693+0000'
+    LOAD_AGENT_DIR = "logs/saved_logs/no-date/logs/"
     N_EPISODES = 3
+    LOAD_FROM: AVAILABLE_LOADING_METHODS = 'checkpoint'
 
-    # LOAD_FROM_PICKLE = LOAD_AGENT + '_genome.pickle'
-    # LOAD_FROM_CHECK_POINT = None
-    LOAD_FROM_PICKLE = None
-    LOAD_FROM_CHECK_POINT = LOAD_AGENT + '_neat-checkpoint-202'
+    assert LOAD_FROM in typing.get_args(AVAILABLE_LOADING_METHODS), LOAD_FROM
 
-    assert (LOAD_FROM_PICKLE is None and LOAD_FROM_CHECK_POINT is not None
-            or LOAD_FROM_PICKLE is not None and LOAD_FROM_CHECK_POINT is None)
-    if LOAD_FROM_PICKLE is not None:
-        CONFIG_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_config')
-        LOAD_AGENT_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_FROM_PICKLE)
-        assert os.path.isfile(LOAD_AGENT_PATH), LOAD_AGENT_PATH
-    if LOAD_FROM_CHECK_POINT is not None:
-        LOAD_AGENT_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_FROM_CHECK_POINT)
-        assert os.path.isfile(LOAD_AGENT_PATH), LOAD_AGENT_PATH
+    CHECKPOINT_NUMBER = None  # if None, load the last checkpoint
 
+    # compute runtime consts:
     LOAD_ENV = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_env.pickle')
+    if LOAD_FROM == 'pickle':
+        CONFIG_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_config')
+        LOAD_AGENT_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_genome.pickle')
+        assert os.path.isfile(LOAD_AGENT_PATH), LOAD_AGENT_PATH
+    elif LOAD_FROM == 'checkpoint':
+        _LOAD_FROM_CHECKPOINT_TAG = '_neat-checkpoint-'
+        if CHECKPOINT_NUMBER is None:
+            prefix = LOAD_AGENT + _LOAD_FROM_CHECKPOINT_TAG
+            checkpoint_numbers = sorted([int(f.removeprefix(prefix))
+                                         for f in os.listdir(LOAD_AGENT_DIR)
+                                         if f.startswith(prefix)])
+            print(f"Checkpoints found (generation_number) for agent {LOAD_AGENT}:", checkpoint_numbers)
+            CHECKPOINT_NUMBER = checkpoint_numbers[-1]  # max(checkpoint_numbers)
+            print('CHECKPOINT_NUMBER:', CHECKPOINT_NUMBER)
+        LOAD_AGENT_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + _LOAD_FROM_CHECKPOINT_TAG + str(CHECKPOINT_NUMBER))
+        assert os.path.isfile(LOAD_AGENT_PATH), LOAD_AGENT_PATH
+    else:
+        raise AssertionError
 
     # logging settings:
     logging_dir, UTCNOW = set_main_logger(file_handler_all=None, stdout_handler=logging.INFO)
@@ -73,23 +88,26 @@ if __name__ == '__main__':
     # ----- AGENT -----
 
     # load from pickle:
-    if LOAD_FROM_PICKLE is not None:
+    if LOAD_FROM == 'pickle':
         with open(LOAD_AGENT_PATH, "rb") as f:
             genome = pickle.load(f)
         agent = RnnNeatAgent(CONFIG_PATH, genome=genome)
 
     # load from checkpoint:
-    if LOAD_FROM_CHECK_POINT is not None:
+    elif LOAD_FROM == 'checkpoint':
         p = neat.Checkpointer.restore_checkpoint(LOAD_AGENT_PATH)
         config = p.config
         # pprint(p.population)
-        pop = sorted([genome for id, genome in p.population.items() if genome.fitness is not None],
+        pop = sorted([genome for _id, genome in p.population.items() if genome.fitness is not None],
                      key=lambda x: -x.fitness)
         pprint([(genome.key, genome, genome.fitness) for genome in pop])
         assert pop
         best_genome = pop[1]
         agent = RnnNeatAgent(config, genome=best_genome)
         print()
+
+    else:
+        raise AssertionError
 
     # ----- MAIN LOOP -----
     # Evolve, interact, repeat.
@@ -109,7 +127,7 @@ if __name__ == '__main__':
     #                save_gif=True,
     #                save_gif_dir=os.path.join(logging_dir, 'frames_' + LOADED_UTCNOW),
     #                save_gif_name=LOADED_UTCNOW + '.gif')
-    evaluate_agent(agent, env, episodes=N_EPISODES, render=True,
+    evaluate_agent(agent, env, episodes=N_EPISODES, render=0,
                    save_gif=True,
                    save_gif_name=os.path.join(logging_dir, 'frames_' + LOADED_UTCNOW + '.gif'))
     # Note: if you run twice evaluate_agent with the same name it will overwrite the previous gif
