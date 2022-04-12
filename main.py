@@ -22,7 +22,7 @@ import pandas as pd
 from gym.utils.env_checker import check_env  # from stable_baselines.common.env_checker import check_env
 
 from memory_evolution.agents import RandomActionAgent, RnnNeatAgent, CtrnnNeatAgent
-from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze
+from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze, RadialArmMaze
 from memory_evolution.evaluate import evaluate_agent
 from memory_evolution.utils import set_main_logger
 
@@ -51,7 +51,7 @@ if __name__ == '__main__':
             JOB_ID = match.group(1)  # type: str
         LOG_TAG = JOB_ID + '_' + UTCNOW
     else:
-        raise AssertionError(sys.argv)
+        raise RuntimeError(sys.argv)
     logging.info('TAG: ' + LOG_TAG)
     
     # get some stats:
@@ -81,7 +81,15 @@ if __name__ == '__main__':
     # env = BaseForagingEnv(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7) # todo: use in tests
     # env = TMaze(seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7, observation_noise=('normal', 0.0, 0.5))
     # env = TMaze(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
-    env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
+
+    #env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
+    # env = RadialArmMaze(3, 1., window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
+    # env = RadialArmMaze(9, window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
+    # env = RadialArmMaze(5, 1., window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
+    # env = RadialArmMaze(2, window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
+    # env = RadialArmMaze(4, window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
+    env = RadialArmMaze(window_size=200, seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
+
     # env = TMaze(seed=42, agent_size=.10, n_food_items=10, max_steps=500, vision_resolution=7)
     logging.debug(env._seed)  # todo: use a variable seed (e.g.: seed=42; env=TMaze(seed=seed); logging.debug(seed)) for assignation of seed, don't access the internal variable
     print('observation_space:',
@@ -116,7 +124,10 @@ if __name__ == '__main__':
     # logging: save current config file for later use:
     shutil.copyfile(config_path, os.path.join(logging_dir, LOG_TAG + '_config'))
 
-    agent = RnnNeatAgent(config_path)
+    Phenotype = RnnNeatAgent
+    with open(os.path.join(logging_dir, LOG_TAG + '_phenotype.pickle'), "wb") as f:
+        pickle.dump(Phenotype, f)
+    agent = Phenotype(config_path)
 
     # ----- MAIN LOOP -----
     # Evolve, interact, repeat.

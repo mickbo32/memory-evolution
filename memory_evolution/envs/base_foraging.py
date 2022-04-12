@@ -315,6 +315,7 @@ class FoodItem(CircleItem):
 
 
 def _constructor(cls, args, kwargs):
+    print(cls, args, kwargs)
     return cls(*args, **kwargs)
 
 
@@ -343,22 +344,76 @@ class BaseForagingEnv(gym.Env, MustOverride):
             logging.warning(str(err) + ", an error should be raised when running the __init__() method")
             obj._init_params = None
         else:  # add subclass default parameters as kwargs if not already present in kwargs
-            mro_it = iter(cls.__mro__)
-            _cls = next(mro_it)  # discard itself class
-            while _cls != BaseForagingEnv:
-                try:
-                    _cls = next(mro_it)
-                except StopIteration:
-                    raise AssertionError(f"{BaseForagingEnv.__qualname__} not found in {cls.__qualname__}.__mro__")
-                params = inspect.signature(_cls.__init__).parameters.values()
-                default_params = {p.name: p.default for p in params if p.default is not p.empty}
-                # add kwargs if not already present
-                for key, val in default_params.items():
-                    if key not in obj._init_params.arguments['kwargs']:
-                        obj._init_params.arguments['kwargs'][key] = val
+            # signature_params = defaultdict(list)
+            # for _param in obj._init_params.signature.parameters.values():
+            #     signature_params[_param.kind].append(_param.name)
+            # assert len(signature_params) <= 5, signature_params
+            positional_only_names = [
+                p.name
+                for p in obj._init_params.signature.parameters.values()
+                if p.kind == p.POSITIONAL_ONLY]
+            positional_or_keyword_names = [
+                p.name
+                for p in obj._init_params.signature.parameters.values()
+                if p.kind == p.POSITIONAL_OR_KEYWORD]
+            var_positional = [
+                p.name
+                for p in obj._init_params.signature.parameters.values()
+                if p.kind == p.VAR_POSITIONAL]
+            assert len(var_positional) <= 1
+            var_keyword = [
+                p.name
+                for p in obj._init_params.signature.parameters.values()
+                if p.kind == p.VAR_KEYWORD]
+            assert len(var_keyword) <= 1
+            assert len(positional_only_names) + len(positional_or_keyword_names) == len(obj._init_params.args) - (
+                len(obj._init_params.arguments[var_positional[0]]) if var_positional else 0), (
+                positional_only_names, positional_or_keyword_names, obj._init_params.args, obj._init_params.arguments)
+            if var_keyword:  # todo: actually I should enforce that subclasses of env must have a **kwargs parameter and use it when calling the init of superclass
+                mro_it = iter(cls.__mro__)
+                _cls = next(mro_it)  # discard itself class
+                while _cls != BaseForagingEnv:
+                    try:
+                        _cls = next(mro_it)
+                    except StopIteration:
+                        raise AssertionError(f"{BaseForagingEnv.__qualname__} not found in {cls.__qualname__}.__mro__")
+                    params = inspect.signature(_cls.__init__).parameters.values()
+                    default_params = {p.name: p.default for p in params if p.default is not p.empty}
+                    # add kwargs if not already present
+                    for key, val in default_params.items():
+                        if (key not in obj._init_params.arguments[var_keyword[0]]
+                                and key not in positional_or_keyword_names):
+                            obj._init_params.arguments[var_keyword[0]][key] = val
+            assert len(positional_only_names) + len(positional_or_keyword_names) == len(obj._init_params.args) - (
+                len(obj._init_params.arguments[var_positional[0]]) if var_positional else 0)
         logging.log(logging.DEBUG + 7,
                     obj.__str__init_params__)
         return obj
+
+    def _update_init_params(self, kwargs_keys):
+        """Call this method in the subclass when calling super().__init__(names..., *args, **kwargs)
+        with more values (names...),
+        (calling it after or before doesn't matter)
+        otherwise you will have both the default value
+        and the computed value during initialization and your pickable object will
+        raise an error when loaded.
+
+        What is actually doing is removing, if present, the kwargs_keys from kwargs of self._init_params,
+        this because they are computed by the __init__ you have just called and so you should not store
+        the default value for the same variable because it is not used, but it will be passed by the __init__.
+        """
+        # fixme: if in a long chain of __init__ call I use a kw and then pass another
+        #  value with the same name in a later call,
+        #  this will delete both and give error when loading the pickle object.
+        var_keyword = [
+            p.name
+            for p in self._init_params.signature.parameters.values()
+            if p.kind == p.VAR_KEYWORD]
+        assert len(var_keyword) <= 1
+        if var_keyword:
+            for key in kwargs_keys:
+                if key in self._init_params.arguments[var_keyword[0]]:
+                    del self._init_params.arguments[var_keyword[0]][key]
 
     def __str__init_params__(self):
         return (f"env: {type(self).__module__}.{type(self).__qualname__}("
@@ -494,7 +549,6 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
         self._platform = Polygon((Point(0, 0), Point(0, self._env_size[1]),
                                   Point(*self._env_size), Point(self._env_size[0], 0)))
-        # self._borders = []
         assert is_simple_polygon(self._platform), (self._platform.wkt, self._platform.boundary)
         self._main_border = self._platform.boundary  # self._main_border_line v.s. self._main_border->.buffer(.05 * self._env_size[0], single_sided=True)
         self._fpsClock = pg.time.Clock()
@@ -771,7 +825,6 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 os.makedirs(match.group(1), exist_ok=False)
 
         self._screen.blit(self._background_img, (0, 0))  # todo: update instead of rewriting each time
-        #                                                # todo: and use sprites
         self._draw_env(self._screen)
 
         # flip/update the screen:

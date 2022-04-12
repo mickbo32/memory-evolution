@@ -26,7 +26,7 @@ from .maze_foraging import MazeForagingEnv, Agent, FoodItem
 class TMaze(MazeForagingEnv):
 
     def __init__(self,
-                 corridor_width: Real = .2,
+                 corridor_width: Optional[Real] = .2,
                  window_size: Union[int, Sequence[int]] = 320,
                  env_size: Union[float, Sequence[float]] = 1.,
                  *args,
@@ -59,12 +59,12 @@ class TMaze(MazeForagingEnv):
         borders = [Polygon(plg) for plg in borders]
 
         super().__init__(
-            borders,
-            window_size,
-            env_size,
-            *args,
+            borders=borders,
+            window_size=window_size,
+            env_size=env_size,
             **kwargs
         )
+        self._update_init_params(['borders', 'window_size', 'env_size'])
 
         assert tuple(up_right) == self._env_size
         assert n_channels == self._n_channels, self._n_channels

@@ -591,9 +591,10 @@ def get_random_non_overlapping_positions_with_lasvegas(
     # _avg_delta[0]=(_avg_delta[0]*_avg_delta[1]+delta)/(_avg_delta[1]+1)
     # _avg_delta[1]=_avg_delta[1]+1
     # print('delta:', delta, '\t\tavg', _avg_delta[0])
+
     assert n == len(poses) == len(radius)
-    assert all(_is_valid_polygon_position(platform, pos.buffer(r)) for pos, r in zip(poses, radius)), (
-        [(p.wkt, r) for p, r in zip(poses, radius) if not _is_valid_polygon_position(platform, p.buffer(r))])
+    # assert all(_is_valid_polygon_position(platform, pos.buffer(r)) for pos, r in zip(poses, radius)), (
+    #     [(p.wkt, r) for p, r in zip(poses, radius) if not _is_valid_polygon_position(platform, p.buffer(r))])
     return [Pos(p.x, p.y) for p in poses]
 
 

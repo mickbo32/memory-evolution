@@ -35,7 +35,12 @@ AVAILABLE_LOADING_METHODS = Literal['pickle', 'checkpoint']
 if __name__ == '__main__':
 
     # ----- Settings -----
-    LOAD_AGENT = '2022-04-09_203055.967693+0000'
+    if len(sys.argv) == 1:
+        LOAD_AGENT = '8488366_2022-04-11_202424.297316+0000'
+    if len(sys.argv) == 2:
+        LOAD_AGENT = sys.argv[1]
+    else:
+        raise RuntimeError(sys.argv)
     LOAD_AGENT_DIR = "logs/saved_logs/no-date/logs/"
     N_EPISODES = 3
     LOAD_FROM: AVAILABLE_LOADING_METHODS = 'checkpoint'
@@ -46,6 +51,7 @@ if __name__ == '__main__':
 
     # compute runtime consts:
     LOAD_ENV = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_env.pickle')
+    LOAD_PHENOTYPE = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_phenotype.pickle')
     if LOAD_FROM == 'pickle':
         CONFIG_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_config')
         LOAD_AGENT_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_genome.pickle')
@@ -68,7 +74,8 @@ if __name__ == '__main__':
     # logging settings:
     logging_dir, UTCNOW = set_main_logger(file_handler_all=None, stdout_handler=logging.INFO)
     logging.info(__file__)
-    LOADED_UTCNOW = 'loaded_agent_' + LOAD_AGENT + '__now_' + UTCNOW
+    # LOADED_UTCNOW = 'loaded_agent_' + LOAD_AGENT + '__now_' + UTCNOW
+    LOADED_UTCNOW = LOAD_AGENT + '_LOADED_AGENT___now_' + UTCNOW
 
     # neat random seeding:
     random.seed(42)
@@ -87,11 +94,14 @@ if __name__ == '__main__':
 
     # ----- AGENT -----
 
+    with open(LOAD_PHENOTYPE, "rb") as f:
+        Phenotype = pickle.load(f)
+
     # load from pickle:
     if LOAD_FROM == 'pickle':
         with open(LOAD_AGENT_PATH, "rb") as f:
             genome = pickle.load(f)
-        agent = RnnNeatAgent(CONFIG_PATH, genome=genome)
+        agent = Phenotype(CONFIG_PATH, genome=genome)
 
     # load from checkpoint:
     elif LOAD_FROM == 'checkpoint':
@@ -103,7 +113,7 @@ if __name__ == '__main__':
         pprint([(genome.key, genome, genome.fitness) for genome in pop])
         assert pop
         best_genome = pop[1]
-        agent = RnnNeatAgent(config, genome=best_genome)
+        agent = Phenotype(config, genome=best_genome)
         print()
 
     else:
@@ -131,7 +141,7 @@ if __name__ == '__main__':
     #                save_gif_name=LOADED_UTCNOW + '.gif')
     evaluate_agent(agent, env, episodes=N_EPISODES, render=True,
                    save_gif=True,
-                   save_gif_name=os.path.join(logging_dir, 'frames_' + LOADED_UTCNOW + '.gif'))
+                   save_gif_name=os.path.join(logging_dir, LOADED_UTCNOW + '_frames.gif'))
     # Note: if you run twice evaluate_agent with the same name it will overwrite the previous gif
     #   (but if save_gif_dir is provided it will raise an error because the directory already exists).
 

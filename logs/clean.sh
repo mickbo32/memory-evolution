@@ -15,4 +15,5 @@ rm -I *.gv
 rm -I *.svg
 rm -I *.png
 rm -I *.pickle
+rm -I *_config
 
