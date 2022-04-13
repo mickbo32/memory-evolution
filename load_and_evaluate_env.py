@@ -35,15 +35,24 @@ AVAILABLE_LOADING_METHODS = Literal['pickle', 'checkpoint']
 if __name__ == '__main__':
 
     # ----- Settings -----
-    if len(sys.argv) == 1:
-        LOAD_AGENT = '8488366_2022-04-11_202424.297316+0000'
-    if len(sys.argv) == 2:
-        LOAD_AGENT = sys.argv[1]
-    else:
-        raise RuntimeError(sys.argv)
+    RENDER = False  # render or just save gif files
+    LOAD_AGENT = '8489233_2022-04-12_220410.946869+0000'
     LOAD_AGENT_DIR = "logs/saved_logs/no-date/logs/"
     N_EPISODES = 3
     LOAD_FROM: AVAILABLE_LOADING_METHODS = 'checkpoint'
+    # override variables if provided as program arguments
+    if len(sys.argv) == 1:
+        pass
+    elif 2 <= len(sys.argv) <= 5:
+        LOAD_AGENT = sys.argv[1]
+        if len(sys.argv) >= 3:
+            LOAD_AGENT_DIR = sys.argv[2]
+        elif len(sys.argv) >= 4:
+            N_EPISODES = sys.argv[3]
+        elif len(sys.argv) >= 5:
+            LOAD_FROM = sys.argv[4]
+    else:
+        raise RuntimeError(sys.argv)
 
     assert LOAD_FROM in typing.get_args(AVAILABLE_LOADING_METHODS), LOAD_FROM
 
@@ -72,7 +81,9 @@ if __name__ == '__main__':
         raise AssertionError
 
     # logging settings:
-    logging_dir, UTCNOW = set_main_logger(file_handler_all=None, stdout_handler=logging.INFO)
+    logging_dir, UTCNOW = set_main_logger(file_handler_all=None,
+                                          stdout_handler=logging.INFO,
+                                          file_handler_now_filename_fmt="log_load_" + LOAD_AGENT + "__now_{utcnow}.log")
     logging.info(__file__)
     # LOADED_UTCNOW = 'loaded_agent_' + LOAD_AGENT + '__now_' + UTCNOW
     LOADED_UTCNOW = LOAD_AGENT + '_LOADED_AGENT___now_' + UTCNOW
@@ -86,7 +97,7 @@ if __name__ == '__main__':
 
     with open(LOAD_ENV, "rb") as f:
         env = pickle.load(f)
-    print(env.__str__init_params__)
+    print(env.__str__init_params__())
     logging.debug(env._seed)  # todo: use a variable seed (e.g.: seed=42; env=TMaze(seed=seed); logging.debug(seed)) for assignation of seed, don't access the internal variable
     print('observation_space:',
           env.observation_space.shape,
@@ -139,7 +150,7 @@ if __name__ == '__main__':
     #                save_gif=True,
     #                save_gif_dir=os.path.join(logging_dir, 'frames_' + LOADED_UTCNOW),
     #                save_gif_name=LOADED_UTCNOW + '.gif')
-    evaluate_agent(agent, env, episodes=N_EPISODES, render=True,
+    evaluate_agent(agent, env, episodes=N_EPISODES, render=RENDER,
                    save_gif=True,
                    save_gif_name=os.path.join(logging_dir, LOADED_UTCNOW + '_frames.gif'))
     # Note: if you run twice evaluate_agent with the same name it will overwrite the previous gif

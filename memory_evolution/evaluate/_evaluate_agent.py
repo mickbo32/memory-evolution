@@ -52,6 +52,8 @@ def evaluate_agent(agent,
         max_actual_time_per_episode: if ``None`` it will just run until the
             environment is done, otherwise after ``max_actual_time_per_episode``
             seconds the environment will be closed and an error is raised.
+            This time do not include the episode reset time, but only the
+            episode loop (i.e. steps) time.
         episodes_fitness_aggr_func: function to use to aggregate all the fitness
             values collected for each single independent episode (default is
             'min': The genome's fitness is its worst performance across all runs).
@@ -109,7 +111,7 @@ def evaluate_agent(agent,
                 if keep_frames:
                     rendering_mode += episode_str
             rendering_mode += ']'
-        start_time_episode = time.perf_counter_ns()
+        start_time_episode_including_reset = time.perf_counter_ns()
         # Reset env and agent:
         observation, info = env.reset(return_info=True)
         agent.reset()
@@ -124,6 +126,15 @@ def evaluate_agent(agent,
                 assert i_episode == 0, i_episode
             prev_episode_agent_pos = env_agent.pos
         assert env.t == 0., env.t
+        start_time_episode = time.perf_counter_ns()
+        reset_actual_time = (start_time_episode - start_time_episode_including_reset) / 10 ** 9
+        msg = (
+            f"\n"
+            f"Episode reset took {reset_actual_time} actual seconds."
+        )
+        logging.log(logging.DEBUG + 5, '\n\t' + '\n\t'.join(msg.split('\n')))
+        if render:
+            print(msg, end='\n\n')
         fitness = 0.0  # food collected
         if render or save_gif:
             # print(observation)
@@ -181,10 +192,9 @@ def evaluate_agent(agent,
             actual_time = (end_time_episode - start_time_episode) / 10 ** 9
             msg = (
                 f"{agent} fitness {fitness}\n"
-                f"Episode finished after {step} timesteps"
+                f"Episode loop finished after {step} timesteps"
                 f", for a total of {end_t} simulated seconds"
                 f" (in {actual_time} actual seconds)."
-                #"\n"
             )
             logging.log(logging.DEBUG + 5, '\n\t' + '\n\t'.join(msg.split('\n')))
             if render:

@@ -17,7 +17,8 @@ from shapely.affinity import rotate, scale, translate
 from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiPolygon
 from shapely.ops import unary_union, triangulate
 
-from memory_evolution.geometry import is_simple_polygon, Pos, get_random_non_overlapping_positions_with_triangulation
+import memory_evolution
+from memory_evolution.geometry import is_simple_polygon, Pos
 from memory_evolution.utils import convert_image_to_pygame
 from memory_evolution.utils import MustOverride, override
 
@@ -137,11 +138,14 @@ class MazeForagingEnv(BaseForagingEnv):
     def is_valid_position(self, pos, item: Literal['agent', 'food'], is_env_pos: bool = True) -> bool:
         return super().is_valid_position(pos, item, is_env_pos)
 
-    # def _get_random_non_overlapping_positions(self,
-    #                                           n,
-    #                                           radius: Union[list, int],
-    #                                           items=None,
-    #                                           ) -> list[Pos]:
-    #     return get_random_non_overlapping_positions_with_triangulation(
-    #         n, radius, self._platform, self._env_size, self.env_space.np_random)
+    def _get_random_non_overlapping_positions(self,
+                                              n,
+                                              radius: Union[list, int],
+                                              items=None,
+                                              ) -> list[Pos]:
+        return memory_evolution.geometry.get_random_non_overlapping_positions_with_lasvegas(
+            n, radius, self._platform, self._env_size, self.env_space.np_random,
+            self, items,
+            optimization_with_platform_triangulation=True,
+        )
 

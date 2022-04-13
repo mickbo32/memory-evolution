@@ -387,7 +387,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
             assert len(positional_only_names) + len(positional_or_keyword_names) == len(obj._init_params.args) - (
                 len(obj._init_params.arguments[var_positional[0]]) if var_positional else 0)
         logging.log(logging.DEBUG + 7,
-                    obj.__str__init_params__)
+                    obj.__str__init_params__())
         return obj
 
     def _update_init_params(self, kwargs_keys):
@@ -647,7 +647,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._rendering = False  # rendering never used
         self._rendering_reset_request = True  # ask the rendering engine to reset the screen
         # init pygame module:
-        pg.init()
+        pg_init_ret = pg.init()
+        logging.debug(f"pg.init() returned: {pg_init_ret}")
         self._screen = None
         # self._env_surface = pg.Surface(self._env_size)
 
@@ -1269,5 +1270,6 @@ class BaseForagingEnv(gym.Env, MustOverride):
         return get_random_non_overlapping_positions_with_lasvegas(
             n, radius, self._platform, self._env_size, self.env_space.np_random,
             self, items,
+            optimization_with_platform_triangulation=False,
         )
 

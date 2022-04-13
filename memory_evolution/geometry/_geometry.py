@@ -304,6 +304,15 @@ line: (6, 5, 0, 6) pixels: [(6, 5), (5, 5), (4, 5), (3, 5), (2, 6), (1, 6), (0, 
 '''
 
 
+def is_point_in_circle(point, radius, origin=(0, 0)) -> bool:
+    """Returns True if ``point`` is inside or on the border of a circle
+    of radius ``radius`` and origin ``origin``."""
+    if len(point) != 2 or len(origin) != 2:
+        raise NotImplementedError("Only 2D geometry is implemented.")
+    x0, y0 = origin
+    x, y = point
+    return (x - x0) ** 2 + (y - y0) ** 2 <= radius ** 2
+
 
 def is_simple_polygon(polygon: Polygon):
     return (
@@ -431,6 +440,14 @@ def get_random_point_in_triangle(triangle, random_generator) -> Point:
     return pnt
 
 
+def _is_valid_polygon_position(platform, pos: Union[Point, Polygon]):
+    if not isinstance(pos, (Point, Polygon)):
+        raise TypeError("'pos' should be an instance of Point or Polygon")
+    if pos.has_z:
+        raise ValueError("'pos' should be 2D (and without channels)")
+    return platform.covers(pos)
+
+
 def get_random_non_overlapping_positions_with_triangulation(
         n,
         radius: Union[list, int],
@@ -438,12 +455,6 @@ def get_random_non_overlapping_positions_with_triangulation(
         env_size,
         random_generator,
 ) -> list[Pos]:
-    def _is_valid_polygon_position(platform, pos: Union[Point, Polygon]):
-        if not isinstance(pos, (Point, Polygon)):
-            raise TypeError("'pos' should be an instance of Point or Polygon")
-        if pos.has_z:
-            raise ValueError("'pos' should be 2D (and without channels)")
-        return platform.covers(pos)
 
     if not isinstance(random_generator, np.random.Generator):
         raise TypeError("'random_state' is not a np.random.Generator object"
@@ -453,6 +464,8 @@ def get_random_non_overlapping_positions_with_triangulation(
     if n != len(radius):
         raise ValueError(f"'radius' should be int or a list of 'n' integers, "
                          f"instead has {len(radius)} elements.")
+    if n <= 0:
+        raise ValueError(f"'n' should be greater or equal to 1 (n={n}).")
     assert 2 == len(env_size), env_size
 
     # more efficient and always ending version:  # todo: test it with polygons with holes
@@ -498,7 +511,7 @@ def get_random_non_overlapping_positions_with_triangulation(
     # # plotting during debug:
     # fig, ax = plt.subplots()
     # gpd.GeoSeries(init_platform.boundary).plot(ax=ax, color='k')
-    # gpd.GeoSeries(platform.buffer(0)).plot(ax=ax, color='b')
+    # gpd.GeoSeries(platform.buffer(0)).plot(ax=ax, color='b')  # the reduced platform
     # gpd.GeoSeries([tr.boundary for tr in triangles]).plot(ax=ax, color='gray')
     # gpd.GeoSeries([Point(p) for p in poses]).plot(ax=ax, color='r')
     # plt.show()
@@ -507,38 +520,64 @@ def get_random_non_overlapping_positions_with_triangulation(
     return [Pos(p.x, p.y) for p in poses]
 
 
-def is_point_in_circle(point, radius, origin=(0, 0)) -> bool:
-    """Returns True if ``point`` is inside or on the border of a circle
-    of radius ``radius`` and origin ``origin``."""
-    if len(point) != 2 or len(origin) != 2:
-        raise NotImplementedError("Only 2D geometry is implemented.")
-    x0, y0 = origin
-    x, y = point
-    return (x - x0) ** 2 + (y - y0) ** 2 <= radius ** 2
+def _get_random_points(
+        n, env_size, platform, random_generator) -> tuple[Sequence, Sequence]:
+    # note: rng.random() choose in the range [0,1), thus will never pick 1, but this is not a problem
+    x = random_generator.random(n) * env_size[0]
+    y = random_generator.random(n) * env_size[1]
+    return x, y
 
 
-# todo: platform not needed
-def get_random_non_overlapping_positions_with_lasvegas(
+def _get_random_points_with_platform_triangulation(
+        n, env_size, platform, random_generator) -> tuple[Sequence, Sequence]:
+
+    # divide the platform in triangles:
+    triangles = triangulate_nonconvex_polygon(platform)
+    # print('Triangles:\n\t' + '\n\t'.join(tr.wkt for tr in triangles))
+
+    # for each point:
+    x = []
+    y = []
+    for i in range(n):
+        # choose randomly a triangle proportionally to its area:
+        probs = np.asarray([tr.area for tr in triangles])
+        probs /= probs.sum(None)
+        tr = random_generator.choice(triangles, p=probs)
+
+        # pick a random point in this triangle:
+        pt = get_random_point_in_triangle(tr, random_generator)
+
+        # update x, y:
+        x.append(pt.x)
+        y.append(pt.y)
+
+    # # plotting during debug:
+    # import geopandas as gpd
+    # fig, ax = plt.subplots()
+    # gpd.GeoSeries(platform.boundary).plot(ax=ax, color='k')
+    # gpd.GeoSeries(platform.buffer(0)).plot(ax=ax, color='b')
+    # gpd.GeoSeries([tr.boundary for tr in triangles]).plot(ax=ax, color='gray')
+    # gpd.GeoSeries([Point(px, py) for px, py in zip(x, y)]).plot(ax=ax, color='r')
+    # plt.show()
+
+    return x, y
+
+
+def _get_random_non_overlapping_positions_with_lasvegas(
+        get_random_points_func,
         n,
         radius: Union[list, int],
         platform,
         env_size,
         random_generator,
-        # epsilon=0,  # max(np.finfo(np.float32).resolution * (3 * 10), .0001),
         _env=None,
         _env_items=None,
-        # _avg_delta=[0, 0]
-) -> list[Pos]:
-    # start = time.perf_counter()
+        # _epsilon=0,  # max(np.finfo(np.float32).resolution * (3 * 10), .0001),
+        __avg_delta=[0, 0]
+) -> list[Point]:
+    __start = time.perf_counter_ns()
     assert _env is None and _env_items is None or _env is not None and _env_items is not None, (_env, _env_items)
     assert _env_items is not None and len(_env_items) == n, (_env_items, n)
-
-    def _is_valid_polygon_position(platform, pos: Union[Point, Polygon]):
-        if not isinstance(pos, (Point, Polygon)):
-            raise TypeError("'pos' should be an instance of Point or Polygon")
-        if pos.has_z:
-            raise ValueError("'pos' should be 2D (and without channels)")
-        return platform.covers(pos)
 
     if not isinstance(random_generator, np.random.Generator):
         raise TypeError("'random_state' is not a np.random.Generator object"
@@ -556,10 +595,8 @@ def get_random_non_overlapping_positions_with_lasvegas(
     while not valid:
         valid = True
 
-        # pick a random point inside env_size:
-        # note: rng.random() choose in the range [0,1), thus will never pick 1, but this is not a problem
-        x = random_generator.random(n) * env_size[0]
-        y = random_generator.random(n) * env_size[1]
+        # pick n random points inside env_size:
+        x, y = get_random_points_func(n, env_size, platform, random_generator)
 
         if _env is not None:
             for _x, _y, _env_item in zip(x, y, _env_items):
@@ -575,11 +612,8 @@ def get_random_non_overlapping_positions_with_lasvegas(
             pt = Point(_x, _y)
 
             # update poses and chosen:
-            pt_buff = pt.buffer(r)  # + epsilon * r)
-            if (pt_buff.intersects(chosen)
-                    # or not platform.covers(pt_buff)  # less efficient
-                    or not (r <= pt.x <= env_size[0] - r and r <= pt.y <= env_size[1] - r)  # more efficient
-            ):
+            pt_buff = pt.buffer(r)  # + _epsilon * r)
+            if pt_buff.intersects(chosen) or not platform.covers(pt_buff):
                 valid = False
                 break
             poses.append(pt)
@@ -587,60 +621,68 @@ def get_random_non_overlapping_positions_with_lasvegas(
         if not valid:
             continue
 
-    # delta=time.perf_counter() - start
-    # _avg_delta[0]=(_avg_delta[0]*_avg_delta[1]+delta)/(_avg_delta[1]+1)
-    # _avg_delta[1]=_avg_delta[1]+1
-    # print('delta:', delta, '\t\tavg', _avg_delta[0])
+    __delta = (time.perf_counter_ns() - __start) / 10 ** 9
+    __avg_delta[0] = (__avg_delta[0] * __avg_delta[1] + __delta) / (__avg_delta[1] + 1)
+    __avg_delta[1] = __avg_delta[1] + 1
+    logging.debug(f"get_random_non_overlapping_positions: delta: {__delta}, \t\tavg{__avg_delta[0]}")
 
     assert n == len(poses) == len(radius)
-    # assert all(_is_valid_polygon_position(platform, pos.buffer(r)) for pos, r in zip(poses, radius)), (
-    #     [(p.wkt, r) for p, r in zip(poses, radius) if not _is_valid_polygon_position(platform, p.buffer(r))])
-    return [Pos(p.x, p.y) for p in poses]
-
-
-"""
-# wrong:
-def get_random_non_overlapping_positions_with_lasvegas(
-        env: memory_evolution.envs.BaseForagingEnv,
-        n,
-        items_type: Union[list, str],
-        items_radius: dict,
-) -> list[Pos]:
-    env_size = env.env_size
-
-    if isinstance(items_type, str):
-        items_type = [items_type] * n
-    if n != len(items_type):
-        raise ValueError(f"'radius' should be int or a list of 'n' integers, "
-                         f"instead has {len(items_type)} elements.")
-    assert 2 == len(env_size), env_size
-
-    rng = env.env_space.np_random
-
-    poses = []  # to preserve the order
-    # chosen = set()  # to check fastly if new pos was already taken
-    i = 0
-    while i < len(items_type):
-        ity = items_type[i]
-
-        # pick a random point inside env_size:
-        # Note: rng.random() choose in the range [0,1), thus will never pick 1,
-        # but this is problem that can be ignored safely.
-        x = rng.random() * env_size[0]
-        y = rng.random() * env_size[1]
-        pt = Pos(x, y)
-
-        # check if point is valid and new: if valid and new, update poses and chosen:
-        if env.is_valid_position(pt, ity, is_env_pos=True):
-            # todo: improve this
-            for j, p in enumerate(poses):
-                if is_point_in_circle(pt, items_radius[])
-            else:
-                i += 1
-                poses.append(pt)
-                # chosen.add(pt)
-
-    assert n == len(poses) == len(items_type)
+    # # plotting during debug:
+    # import geopandas as gpd
+    # fig, ax = plt.subplots()
+    # gpd.GeoSeries(platform.boundary).plot(ax=ax, color='k')
+    # gpd.GeoSeries(platform.buffer(0)).plot(ax=ax, color='b')
+    # gpd.GeoSeries([Point(p) for p in poses]).plot(ax=ax, color='r')
+    # plt.show()
+    assert all(_is_valid_polygon_position(platform, pos.buffer(r)) for pos, r in zip(poses, radius)), (
+        [(p.wkt, r) for p, r in zip(poses, radius) if not _is_valid_polygon_position(platform, p.buffer(r))])
     return poses
-"""
+
+
+def get_random_non_overlapping_positions_with_lasvegas(
+        n,
+        radius: Union[list, int],
+        platform,
+        env_size,
+        random_generator,
+        _env=None,
+        _env_items=None,
+        *,
+        optimization_with_platform_triangulation: bool = True,
+) -> list[Pos]:
+    # optimization_with_platform_triangulation: bool = True,
+    #   => much faster with mazes (e.g. RadialArmMaze(4)):
+    #   [DEBUG] _geometry      :  get_random_non_overlapping_positions: delta: 1.38404269, avg1.7227317495599999
+    # optimization_with_platform_triangulation: bool = False,
+    #   => much slower with mazes (e.g. RadialArmMaze(4)):
+    #   [] get_random_non_overlapping_positions: delta: 103.411216097, avg121.30221130449999
+    # I leave the optimization option only because with some wierd maze triangulation fails,
+    # but if triangulation for complex nonconvex polygons is fixed you can delete the option
+    # and use always the optimization. Note: actually, if the maze has not a lot of space,
+    # the function get_random_non_overlapping_positions_with_triangulation() would be preferred
+    # (but now don't work because of complex nonconvex polygon forming during the platform difference)
+    # Note2: with BaseForagingEnv you can be fine without optimization (this the only case in which make sense
+    # using without optimization option because is faster, because the platform is a simple rectangle and
+    # the triangulation of platform and using shapely is just wasted time) => OK, thus better leaving the choice.
+    # optimization_with_platform_triangulation: bool = True,
+    #   => slower with BaseForagingEnv:
+    #   [DEBUG] _geometry      :  get_random_non_overlapping_positions: delta: 0.006201095, avg0.017522545437499995
+    # optimization_with_platform_triangulation: bool = False,
+    #   => faster with BaseForagingEnv:
+    #   [DEBUG] _geometry      :  get_random_non_overlapping_positions: delta: 0.005806415, avg0.00390674145945946
+    if optimization_with_platform_triangulation:
+        get_random_points_func = _get_random_points_with_platform_triangulation
+    else:
+        get_random_points_func = _get_random_points
+    poses = _get_random_non_overlapping_positions_with_lasvegas(
+        get_random_points_func,
+        n,
+        radius,
+        platform,
+        env_size,
+        random_generator,
+        _env,
+        _env_items,
+    )
+    return [Pos(p.x, p.y) for p in poses]
 

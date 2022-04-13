@@ -34,24 +34,32 @@ if isRunningInPyCharm:
 
 if __name__ == '__main__':
 
-    # ----- Settings -----
-
-    # logging settings:
-    logging_dir, UTCNOW = set_main_logger(file_handler_all=None, stdout_handler=logging.INFO)
-    logging.info(__file__)
-
-    # if job_id is passed to the program, use it in the log tag:
-    JOB_ID = None
+    # parse command-line arguments passed to the program:
+    JOB_ID = ''  # type: str
     if len(sys.argv) == 1:
-        LOG_TAG = UTCNOW
+        pass
     elif len(sys.argv) == 2:
         JOB_ID = str(sys.argv[1])
         match = re.match(r"^([0-9]+).hpc-head-n1.unitn.it$", JOB_ID)
         if match:
             JOB_ID = match.group(1)  # type: str
-        LOG_TAG = JOB_ID + '_' + UTCNOW
+        assert isinstance(JOB_ID, str), type(JOB_ID)
     else:
         raise RuntimeError(sys.argv)
+
+    # ----- Settings -----
+
+    # logging settings:
+    logging_dir, UTCNOW = set_main_logger(file_handler_all=None,
+                                          stdout_handler=logging.INFO,
+                                          file_handler_now_filename_fmt="log_" + JOB_ID + "_{utcnow}.log")
+    logging.info(__file__)
+
+    # if job_id is passed to the program, use it in the log tag:
+    if JOB_ID:
+        LOG_TAG = JOB_ID + '_' + UTCNOW
+    else:
+        LOG_TAG = UTCNOW
     logging.info('TAG: ' + LOG_TAG)
     
     # get some stats:
@@ -82,13 +90,14 @@ if __name__ == '__main__':
     # env = TMaze(seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7, observation_noise=('normal', 0.0, 0.5))
     # env = TMaze(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
 
-    #env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
+    env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
+
     # env = RadialArmMaze(3, 1., window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
     # env = RadialArmMaze(9, window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
     # env = RadialArmMaze(5, 1., window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
     # env = RadialArmMaze(2, window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
     # env = RadialArmMaze(4, window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
-    env = RadialArmMaze(window_size=200, seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
+    # env = RadialArmMaze(window_size=200, seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
 
     # env = TMaze(seed=42, agent_size=.10, n_food_items=10, max_steps=500, vision_resolution=7)
     logging.debug(env._seed)  # todo: use a variable seed (e.g.: seed=42; env=TMaze(seed=seed); logging.debug(seed)) for assignation of seed, don't access the internal variable
@@ -133,7 +142,7 @@ if __name__ == '__main__':
     # Evolve, interact, repeat.
 
     # Rendering settings:
-    if JOB_ID is None:  # local execution
+    if not JOB_ID:  # local execution
         # note: if you render all will be slow, but good for debugging
         # note2: if you render all and if you minimize the window or you put it in a part of the screen not visible
         #        the algorithm will go way faster, so you can make it faster and debugging

@@ -24,8 +24,10 @@ bias_init_stdev         = 1.0
 bias_init_type          = normal
 bias_max_value          = 30.0
 bias_min_value          = -30.0
-bias_mutate_power       = 0.5
-bias_mutate_rate        = 0.7
+# bias_mutate_power       = 0.5
+bias_mutate_power       = 0.1
+# bias_mutate_rate        = 0.7
+bias_mutate_rate        = 0.3
 bias_replace_rate       = 0.1
 
 # genome compatibility options
@@ -60,9 +62,12 @@ response_init_stdev     = 0.0
 response_init_type      = normal
 response_max_value      = 30.0
 response_min_value      = -30.0
-response_mutate_power   = 0.0
-response_mutate_rate    = 0.0
-response_replace_rate   = 0.0
+# response_mutate_power   = 0.0
+# response_mutate_rate    = 0.0
+# response_replace_rate   = 0.0
+response_mutate_power   = 0.01
+response_mutate_rate    = 0.01
+response_replace_rate   = 0.0001
 
 # single/multiple mutation options
 single_structural_mutation = False
@@ -74,14 +79,16 @@ weight_init_stdev       = 1.0
 weight_init_type        = normal
 weight_max_value        = 30
 weight_min_value        = -30
-weight_mutate_power     = 0.5
-weight_mutate_rate      = 0.8
+# weight_mutate_power     = 0.5
+weight_mutate_power     = 0.4
+# weight_mutate_rate      = 0.8
+weight_mutate_rate      = 0.5
 weight_replace_rate     = 0.1
 
 [DefaultSpeciesSet]
 # compatibility_threshold = 3.0  # too few species, just one (with pop 20)
 # compatibility_threshold = 2.0  # too many species (with pop 200)
-compatibility_threshold = 2.8
+compatibility_threshold = 3.0
 
 [DefaultStagnation]
 species_fitness_func = max
