@@ -81,7 +81,7 @@ def evaluate_agent(agent,
             episode has not finished after ``max_iters_per_episode`` timesteps.
     """
     keep_frames = bool(save_gif_dir)
-    if save_gif_dir is None:
+    if save_gif and save_gif_dir is None:
         temp_dir = tempfile.TemporaryDirectory(prefix='frames-')
         # temp_dir will be automatically deleted when the program is closed
         # or is garbage-collected or temp_dir.cleanup() is explicitly called.
@@ -187,15 +187,15 @@ def evaluate_agent(agent,
             # # fitness = (fitness, agent_distance_from_start)
             # fitness += agent_distance_from_start / max(env.env_size) * .99
 
-            # fitness: (total_reward, timesteps used to get all food items):
+            # fitness: (total_reward, 1 - timesteps used to get all food items if all food items collected):
             if env.food_items_collected == env.n_food_items:
                 timesteps_normalized = step / env.max_steps
                 # note: the agent could take the last food item in the last timestep
-                #   thus, 'timesteps_normalized' could be 1, but since we need a less than one value
-                #   multiply it by .99
+                #   thus, 'timesteps_normalized' could be 1
+                # note2: more timesteps is bad, less timestep is good, thus fitness: 1 - 'timesteps_normalized'
                 logging.debug(f"timesteps_normalized: {timesteps_normalized};"
-                              f" timesteps_normalized*.99: {timesteps_normalized * .99}")
-                fitness += timesteps_normalized * .99
+                              f" 1-timesteps_normalized: {1 - timesteps_normalized}")
+                fitness += 1 - timesteps_normalized
             else:
                 assert step == env.step_count == env.max_steps
                 assert env.food_items_collected < env.n_food_items
@@ -258,7 +258,7 @@ def evaluate_agent(agent,
                 f"Episode has not finished after {step} timesteps"
                 f" and {end_t} simulated seconds"
                 f" (in {(end_time_episode - start_time_episode) / 10 ** 9} actual seconds).")
-    if save_gif_dir is None:
+    if save_gif and save_gif_dir is None:
         temp_dir.cleanup()
     final_fitness = getattr(np, episodes_fitness_aggr_func)(fitnesses)
     # env.close()  # use it only in main, otherwise it will be closed and
