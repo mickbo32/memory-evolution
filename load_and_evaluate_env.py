@@ -36,10 +36,11 @@ if __name__ == '__main__':
 
     # ----- Settings -----
     RENDER = False  # render or just save gif files
-    LOAD_AGENT = '8489233_2022-04-12_220410.946869+0000'
+    LOAD_AGENT = '8491097_2022-04-14_190436.032256+0000'
     LOAD_AGENT_DIR = "logs/saved_logs/no-date/logs/"
-    N_EPISODES = 3
+    N_EPISODES = 2
     LOAD_FROM: AVAILABLE_LOADING_METHODS = 'checkpoint'
+    LOGGING_DIR = 'logs'
     # override variables if provided as program arguments
     if len(sys.argv) == 1:
         pass
@@ -82,14 +83,16 @@ if __name__ == '__main__':
 
     # logging settings:
     logging_dir, UTCNOW = set_main_logger(file_handler_all=None,
+                                          logging_dir=LOGGING_DIR,
                                           stdout_handler=logging.INFO,
                                           file_handler_now_filename_fmt="log_load_" + LOAD_AGENT + "__now_{utcnow}.log")
+    del LOGGING_DIR  # from now on use 'logging_dir' instead.
     logging.info(__file__)
     # LOADED_UTCNOW = 'loaded_agent_' + LOAD_AGENT + '__now_' + UTCNOW
     LOADED_UTCNOW = LOAD_AGENT + '_LOADED_AGENT___now_' + UTCNOW
 
     # neat random seeding:
-    random.seed(42)
+    # random.seed(42)
     logging.debug(random.getstate())
     # Use random.setstate(state) to set an old state, where 'state' have been obtained from a previous call to getstate().
 

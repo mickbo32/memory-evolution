@@ -14,26 +14,25 @@ import tempfile
 import time
 
 import gym
-from gym import spaces
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-import neat
 import numpy as np
 from numpy.random import SeedSequence, default_rng
 import pandas as pd
-import pygame
-from shapely.affinity import rotate, scale, translate
-from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiPoint, MultiPolygon
-from shapely.ops import unary_union, triangulate
 
 import memory_evolution
+
+
+# def compute_fitness(total_reward, other_metric, other_metric2) -> float:
+#     fitness = 0.0
+#     return fitness
 
 
 def evaluate_agent(agent,
                    env: gym.Env,
                    episodes: int = 1,
                    max_actual_time_per_episode: Optional[Union[int, float]] = None,
-                   episodes_fitness_aggr_func: Literal['mean', 'max', 'min'] = 'min',
+                   episodes_fitness_aggr_func: Literal['min', 'max', 'mean', 'median'] = 'min',
                    render: bool = False,
                    save_gif: bool = False,
                    save_gif_dir: str = None,
@@ -175,20 +174,44 @@ def evaluate_agent(agent,
             #  (don't_use unnecessary attributes .time_step, .food_items_collected, etc...,
             #  use them only for asserts).
         if isinstance(env, memory_evolution.envs.BaseForagingEnv):
-            assert fitness == int(fitness), (fitness, int(fitness))
-            end_agent_pos = info['state']['agent'].pos
-            agent_distance_from_start = memory_evolution.geometry.euclidean_distance(first_agent_pos, end_agent_pos)
-            msg = f"agent_distance_from_start: {agent_distance_from_start}"
-            # print(f"agent_distance_from_start: {agent_distance_from_start}")
-            logging.debug(f"agent_distance_from_start: {agent_distance_from_start}")
+            assert fitness == int(fitness), (fitness, int(fitness))  # fitness should be an integer at this point
+
             # todo: neat should be able to take tuples as fitness
-            # fitness = (fitness, agent_distance_from_start)
-            fitness += agent_distance_from_start / max(env.env_size) * .99
+
+            # # fitness: (total_reward, agent_distance_from_start):
+            # end_agent_pos = info['state']['agent'].pos
+            # agent_distance_from_start = memory_evolution.geometry.euclidean_distance(first_agent_pos, end_agent_pos)
+            # # print(f"agent_distance_from_start: {agent_distance_from_start}")
+            # logging.debug(f"agent_distance_from_start: {agent_distance_from_start}")
+            # # todo: neat should be able to take tuples as fitness
+            # # fitness = (fitness, agent_distance_from_start)
+            # fitness += agent_distance_from_start / max(env.env_size) * .99
+
+            # fitness: (total_reward, timesteps used to get all food items):
+            if env.food_items_collected == env.n_food_items:
+                timesteps_normalized = step / env.max_steps
+                # note: the agent could take the last food item in the last timestep
+                #   thus, 'timesteps_normalized' could be 1, but since we need a less than one value
+                #   multiply it by .99
+                logging.debug(f"timesteps_normalized: {timesteps_normalized};"
+                              f" timesteps_normalized*.99: {timesteps_normalized * .99}")
+                fitness += timesteps_normalized * .99
+            else:
+                assert step == env.step_count == env.max_steps
+                assert env.food_items_collected < env.n_food_items
+
             msg = f"fitness: {fitness}"
             # print(msg)
             logging.debug(msg)
         fitnesses.append(fitness)
         if done:
+            if isinstance(env, memory_evolution.envs.BaseForagingEnv):
+                assert step == env.step_count == info['debug_info']['_is_done']['step_count'] + 1, (
+                    step, env.step_count, info['debug_info']['_is_done']['step_count'])
+                assert info['debug_info']['_is_done']['done'] is True, info['debug_info']['_is_done']
+                assert (info['debug_info']['_is_done']['food_items_collected'] == info['debug_info']['_is_done']['n_food_items']
+                        or env.step_count == info['debug_info']['_is_done']['max_steps']), info['debug_info']['_is_done']
+
             actual_time = (end_time_episode - start_time_episode) / 10 ** 9
             msg = (
                 f"{agent} fitness {fitness}\n"
@@ -225,6 +248,12 @@ def evaluate_agent(agent,
                 # todo: sarebbe bene fare anche un video .mp4, però accertati che FPS in uscita siano e.g. 50 o 60,
                 #       e non 100+ come nella gif che semplicemente aggrega tutti i frames.
         else:
+            if isinstance(env, memory_evolution.envs.BaseForagingEnv):
+                assert step == env.step_count == info['debug_info']['_is_done']['step_count'] + 1, (
+                    step, env.step_count, info['debug_info']['_is_done']['step_count'])
+                assert info['debug_info']['_is_done']['done'] is False, info['debug_info']['_is_done']
+                assert not (info['debug_info']['_is_done']['food_items_collected'] == info['debug_info']['_is_done']['n_food_items']
+                            or env.step_count == info['debug_info']['_is_done']['max_steps']), info['debug_info']['_is_done']
             raise RuntimeError(
                 f"Episode has not finished after {step} timesteps"
                 f" and {end_t} simulated seconds"

@@ -448,6 +448,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
                  ) -> None:
         """Inits environment
 
+        The environment is done when all food items are collected or ``max_steps`` is reached.
+
         Args:
             window_size: if it is a Sequence of ints: (width, height);
                          if it is an int it is window_width, window_height is adjusted accordingly.
@@ -480,9 +482,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
                     Examples:
                         observation_noise=('normal', 0.0, 1.0)  # normal distribution mean=0.0, std=1.0
                         observation_noise=('uniform', 0.0, 1.0)  # uniform distribution [low=0.0, high=1.0)
-            max_steps: after this number of steps the environment is done (the
-                    ``max_steps``_th step it will return done); if ``None``
-                    continue forever (done always False).
+            max_steps: after this number of steps the environment is done, even if no all
+                    food items are collected(the ``max_steps``_th step it will return
+                    done True); if ``None`` continue forever (done always False).
             fps: frames per second, if it is None it does the rendering as fast as possible.
             seed: seed for random generators.
         """
@@ -556,14 +558,14 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self.time_step = 1
         self.t = None
 
-        self.step_count = None
+        self._step_count = None
         self._agent = None  # todo: probably this is not needed
         self._agent_group = pg.sprite.GroupSingle()  # todo: call this _agent
         self._food_items = []  # todo: probably this is not needed
         self._food_items_group = pg.sprite.Group()  # todo: call this _food_items
         self._env_img = None  # todo: make state (env_state) an object
         self.__get_observation_points_cache = {}
-        self.food_items_collected = None
+        self._food_items_collected = None
 
         # sq = SeedSequence(self._seed)
         # seed = sq.spawn(1)[0]
@@ -686,6 +688,49 @@ class BaseForagingEnv(gym.Env, MustOverride):
     def _get_env_size(env_size):
         return tuple(env_size) if isinstance(env_size, Sequence) else (env_size, env_size)
 
+    @property
+    def n_food_items(self):
+        return self._n_food_items
+
+    @property
+    def rotation_step(self):
+        return self._rotation_step
+
+    @property
+    def forward_step(self):
+        return self._forward_step
+
+    @property
+    def agent_size(self):
+        if self._agent is None:
+            return self._agent_size
+        elif isinstance(self._agent, Agent):
+            sz = self._agent.size
+            assert self._agent_size == sz
+            return sz
+        else:
+            raise AssertionError(self._agent)
+
+    @property
+    def food_size(self):
+        return self._food_size
+
+    @property
+    def is_observation_noise_present(self):
+        return self._observation_noise is not None
+
+    @property
+    def step_count(self):
+        return self._step_count
+
+    @property
+    def max_steps(self):
+        return self._max_steps
+
+    @property
+    def food_items_collected(self):
+        return self._food_items_collected
+
     @staticmethod
     def __get_vision_point_transparency(point_win_radius, vision_win_step):
         transparency = .8  # base
@@ -701,7 +746,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
     def step(self, action) -> tuple[np.ndarray, Real, bool, dict]:
         # logging.debug('Step')
         self.debug_info['step']['running'] = True
-        self.debug_info['step']['count'] = self.step_count
+        self.debug_info['step']['count'] = self._step_count
         if not self.__has_been_ever_reset:
             self.reset()
         if not self.action_space.contains(action):
@@ -725,8 +770,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # debugging info:
         info = self._get_info()
 
-        self.step_count += 1
-        self.debug_info['step']['count'] = self.step_count
+        self._step_count += 1
+        self.debug_info['step']['count'] = self._step_count
         self.debug_info['step']['running'] = False
         return observation, reward, done, info
 
@@ -745,9 +790,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
                       return_info=return_info,
                       options=options)
         self.__has_been_ever_reset = True
-        self.step_count = 0
+        self._step_count = 0
         self.t = 0
-        self.food_items_collected = 0
+        self._food_items_collected = 0
 
         msg = (
             "Custom subclass should create a 'self._background_img'"
@@ -838,7 +883,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
             match = re.search(r'^(?:.*\+)?save\[(.*)](?:\+.*)?$', mode)
             if match:
                 pg.image.save(self._screen,
-                              os.path.join(match.group(1), f"frame_{self.step_count}.jpg"))
+                              os.path.join(match.group(1), f"frame_{self._step_count}.jpg"))
             elif re.search(r'^(?:.*\+)?human(?:\+.*)?$', mode):
                 pass
             else:
@@ -1082,14 +1127,14 @@ class BaseForagingEnv(gym.Env, MustOverride):
             if self._is_food_item_collected(self._agent, food):
                 remove_food.add(idx)
                 food_collected += 1
-                self.food_items_collected += 1
+                self._food_items_collected += 1
                 logging.log(logging.DEBUG + 3,
-                            f'Food collected.    [Total food items collected until now: {self.food_items_collected}]')
+                            f'Food collected.    [Total food items collected until now: {self._food_items_collected}]')
         for j in remove_food:
             food = self._food_items[j]
             food.kill()  # remove from all groups
         self._food_items = [food for i, food in enumerate(self._food_items) if i not in remove_food]  # O(len(self._food_items)) if isinstance(remove_food, set) else O(len(remove_food) * len(self._food_items))
-        assert len(self._food_items) == len(self._food_items_group) == self._n_food_items - self.food_items_collected
+        assert len(self._food_items) == len(self._food_items_group) == self._n_food_items - self._food_items_collected
         assert food_collected >= 0, food_collected
 
         # update _env_img: -> pos: & rotate:
@@ -1132,8 +1177,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
     def _get_observation_points(self) -> np.ndarray:
 
-        if self.__get_observation_points_cache.get('last_step_count', None) != self.step_count:
-            self.__get_observation_points_cache['last_step_count'] = self.step_count
+        if self.__get_observation_points_cache.get('last_step_count', None) != self._step_count:
+            self.__get_observation_points_cache['last_step_count'] = self._step_count
 
             # Create a segment of length self._vision_depth from the agent center (offset self._vision_start)
             #   with self._vision_resolution points,
@@ -1185,11 +1230,20 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
     @override
     def _is_done(self) -> bool:
-        self.debug_info['_is_done'] = {}
-        if self._max_steps is None:
-            return False
-        else:
-            return self.step_count >= self._max_steps - 1
+        done = False
+        if self._max_steps is not None:
+            done = done or self._step_count >= self._max_steps - 1
+
+        assert self._food_items_collected <= self.n_food_items, (self._food_items_collected, self.n_food_items)
+        done = done or self._food_items_collected >= self.n_food_items
+
+        self.debug_info['_is_done'] = {'done': done,
+                                       'food_items_collected': self._food_items_collected,
+                                       'n_food_items': self.n_food_items,
+                                       'step_count': self._step_count,
+                                       'step_count_note': 'this is the self._step_count before self.step() is finished, thus starting form 0',
+                                       'max_steps': self._max_steps}
+        return done
 
     @override
     def _get_info(self) -> dict:
@@ -1220,7 +1274,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 'time_step': self.time_step,
             },
             'env_img': self._env_img,  # memory_evolution.utils.convert_pg_surface_to_array(self._env_img), # converting is too expensive, don't do it
-            'current_step': self.step_count,
+            'current_step': self._step_count,
             't': self.t,
             'debug_info': self.debug_info,
         }
