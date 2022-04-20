@@ -70,6 +70,11 @@ class MazeForagingEnv(BaseForagingEnv):
         # valid positions:
         self._compute_and_set_valid_positions(self._platform)
 
+    @property
+    @override
+    def maximum_reward(self):
+        return super().maximum_reward
+
     def get_platform_from_borders(self, borders: Iterable):
 
         if not isinstance(borders, Iterable):

@@ -36,7 +36,7 @@ if __name__ == '__main__':
 
     # ----- Settings -----
     RENDER = False  # render or just save gif files
-    LOAD_AGENT = '8491097_2022-04-14_190436.032256+0000'
+    LOAD_AGENT = '8492189_2022-04-19_171010.328840+0000'
     LOAD_AGENT_DIR = "logs/saved_logs/no-date/logs/"
     N_EPISODES = 2
     LOAD_FROM: AVAILABLE_LOADING_METHODS = 'checkpoint'

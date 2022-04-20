@@ -8,6 +8,6 @@ from ._envs import (
     PickableClock,
 )
 from ._logging import set_main_logger
-from ._override import MustOverride, MustOverrideMeta, override
+from ._override import MustOverride, MustOverrideMeta, NotOverriddenError, override
 from ._video import generate_gif_from_path
 

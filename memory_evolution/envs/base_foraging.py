@@ -731,6 +731,11 @@ class BaseForagingEnv(gym.Env, MustOverride):
     def food_items_collected(self):
         return self._food_items_collected
 
+    @property
+    @override
+    def maximum_reward(self):
+        return self._n_food_items
+
     @staticmethod
     def __get_vision_point_transparency(point_win_radius, vision_win_step):
         transparency = .8  # base

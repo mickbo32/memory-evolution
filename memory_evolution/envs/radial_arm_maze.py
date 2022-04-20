@@ -137,3 +137,8 @@ class RadialArmMaze(MazeForagingEnv):
         assert tuple(up_right) == self._env_size
         assert n_channels == self._n_channels, self._n_channels
 
+    @property
+    @override
+    def maximum_reward(self):
+        return super().maximum_reward
+

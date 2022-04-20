@@ -36,14 +36,34 @@ if __name__ == '__main__':
 
     # parse command-line arguments passed to the program:
     JOB_ID = ''  # type: str
-    if len(sys.argv) == 1:
+    if len(sys.argv) == 1:  # local execution
         pass
-    elif len(sys.argv) == 2:
+    elif len(sys.argv) == 2:  # remote execution
+
+        # remote execution,
+        # JOB_ID should be passed as argument to the program when running it on the remote cluster server.
         JOB_ID = str(sys.argv[1])
         match = re.match(r"^([0-9]+).hpc-head-n1.unitn.it$", JOB_ID)
         if match:
             JOB_ID = match.group(1)  # type: str
         assert isinstance(JOB_ID, str), type(JOB_ID)
+
+        # remote execution, no input devices.
+        os.environ['SDL_AUDIODRIVER'] = 'dummy'
+        os.environ['SDL_VIDEODRIVER'] = 'dummy'
+        os.environ['SDL_MOUSEDRIVER'] = 'dummy'
+        """
+        # Alternatively,
+        # Environment variables can be set in the script which calls this program:
+        #...
+        echo "Starting (PBS_JOBID=${PBS_JOBID}) ..."
+        source ~/miniconda3/bin/activate evo
+        python --version
+        export SDL_AUDIODRIVER='dummy'
+        export SDL_VIDEODRIVER='dummy'
+        export SDL_MOUSEDRIVER='dummy'
+        python memory-evolution/main.py "${PBS_JOBID}"
+        """
     else:
         raise RuntimeError(sys.argv)
 
