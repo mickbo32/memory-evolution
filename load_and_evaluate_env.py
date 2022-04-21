@@ -18,8 +18,9 @@ import pandas as pd
 
 from gym.utils.env_checker import check_env  # from stable_baselines.common.env_checker import check_env
 
+import memory_evolution
 from memory_evolution.agents import RandomActionAgent, RnnNeatAgent, CtrnnNeatAgent
-from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze
+from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze, RadialArmMaze
 from memory_evolution.evaluate import evaluate_agent
 from memory_evolution.utils import set_main_logger
 
@@ -36,11 +37,13 @@ if __name__ == '__main__':
 
     # ----- Settings -----
     RENDER = False  # render or just save gif files
-    LOAD_AGENT = '8492189_2022-04-19_171010.328840+0000'
+    # ---
+    LOAD_AGENT = '8492571_2022-04-20_212136.999729+0000'
     LOAD_AGENT_DIR = "logs/saved_logs/no-date/logs/"
     N_EPISODES = 2
     LOAD_FROM: AVAILABLE_LOADING_METHODS = 'checkpoint'
     LOGGING_DIR = 'logs'
+    # ---
     # override variables if provided as program arguments
     if len(sys.argv) == 1:
         pass
@@ -98,8 +101,16 @@ if __name__ == '__main__':
 
     # ----- ENVIRONMENT -----
 
+    # env = RadialArmMaze(corridor_width=.2,
+    #                     window_size=200, seed=4242, agent_size=.075, food_size=.05, n_food_items=1,
+    #                     # init_agent_position=(.5, .1), init_food_positions=((.9, .5),),
+    #                     init_agent_position=(.9, .5), init_food_positions=((.5, .9),),
+    #                     vision_depth=.2, vision_field_angle=135, max_steps=400, vision_resolution=8)
+
+    # todo: json, so you can change stuffs
     with open(LOAD_ENV, "rb") as f:
         env = pickle.load(f)
+
     print(env.__str__init_params__())
     logging.debug(env._seed)  # todo: use a variable seed (e.g.: seed=42; env=TMaze(seed=seed); logging.debug(seed)) for assignation of seed, don't access the internal variable
     print('observation_space:',

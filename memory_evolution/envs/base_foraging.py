@@ -441,7 +441,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                  vision_resolution: int = 10,
                  observation_noise: Sequence[str, Real, Real] = None,
                  init_agent_position: Optional[Pos] = None,
-                 init_food_positions: Optional[list] = None,
+                 init_food_positions: Optional[Sequence[Pos]] = None,
                  max_steps: Optional[int] = None,
                  fps: Optional[int] = None,
                  seed=None,  # todo: int or SeedSequence
@@ -467,9 +467,6 @@ class BaseForagingEnv(gym.Env, MustOverride):
                     i.e. the number of observation points will be
                     ``vision_resolution * self.vision_field_n_angles``,
                     the observation shape can be accessed by ``self.observation_space.shape``.
-            init_food_positions: if provided should be a list of ``n_food_items`` valid
-                    food item positions (in the environment space). If ``None``,
-                    ``n_food_items`` food items are generated in random positions.
             observation_noise: If None, observation is returned as it is. Otherwise, add noise
                     to the observation, in this case ``observation_noise``
                     describes which method to use for noise generation, it should be a Sequence
@@ -482,6 +479,12 @@ class BaseForagingEnv(gym.Env, MustOverride):
                     Examples:
                         observation_noise=('normal', 0.0, 1.0)  # normal distribution mean=0.0, std=1.0
                         observation_noise=('uniform', 0.0, 1.0)  # uniform distribution [low=0.0, high=1.0)
+            init_agent_position: if provided should be a valid
+                    agent positions (in the environment space). If ``None``,
+                    when resetting the agent is placed in random positions.
+            init_food_positions: if provided should be a list of ``n_food_items`` valid
+                    food item positions (in the environment space). If ``None``,
+                    ``n_food_items`` food items are spawned in random positions.
             max_steps: after this number of steps the environment is done, even if no all
                     food items are collected(the ``max_steps``_th step it will return
                     done True); if ``None`` continue forever (done always False).
@@ -540,7 +543,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._seedsequence = SeedSequence(self._seed)
 
         self.agent_color = COLORS['red']
-        self.food_color = COLORS['black']
+        self.food_color = COLORS['gray']
         self.background_color = COLORS['white']  # todo: do it with Texture
         self.outside_color = COLORS['black']
 
@@ -629,10 +632,12 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # self._observation = None  # todo
 
         if init_agent_position is not None:
-            pos = init_agent_position
-            if not self.is_valid_position(pos, 'agent', is_env_pos=True):
-                raise ValueError(f"agent position in 'init_agent_position'"
-                                 f" is not valid: {pos}")
+            if not isinstance(init_agent_position, Iterable):
+                raise TypeError("'init_agent_position' should be something from which a point can be generated (an Iterable)")
+            if not isinstance(init_agent_position, Pos):
+                init_agent_position = Pos(*init_agent_position)
+            if len(init_agent_position) != 2:
+                raise ValueError("'init_agent_position' should be 2D (and without channels)")
         self._init_agent_position = init_agent_position
         if init_food_positions is not None:
             if len(init_food_positions) != self._n_food_items:
@@ -640,10 +645,15 @@ class BaseForagingEnv(gym.Env, MustOverride):
                                  f" but 'init_food_positions' contains "
                                  f"{len(init_food_positions)} positions.")
             for pos in init_food_positions:
-                if not self.is_valid_position(pos, 'food', is_env_pos=True):
-                    raise ValueError(f"food item positions in 'init_food_positions'"
-                                     f" is not valid: {pos}")
+                if not isinstance(pos, Iterable):
+                    raise TypeError("position in 'init_food_positions' should be something from which a point can be generated (an Iterable)")
+            init_food_positions = [(pos if isinstance(pos, Pos) else Pos(*pos))
+                                   for pos in init_food_positions]
+            for pos in init_food_positions:
+                if len(pos) != 2:
+                    raise ValueError("position in 'init_food_positions' should be 2D (and without channels)")
         self._init_food_positions = init_food_positions
+        # checks on init_agent_position and init_food_positions positions validation in self.reset()
 
         # Rendering:
         self._rendering = False  # rendering never used
@@ -794,23 +804,38 @@ class BaseForagingEnv(gym.Env, MustOverride):
         super().reset(seed=seed,
                       return_info=return_info,
                       options=options)
-        self.__has_been_ever_reset = True
         self._step_count = 0
         self.t = 0
         self._food_items_collected = 0
+        if not self.__has_been_ever_reset:
+            self.__has_been_ever_reset = True
 
-        msg = (
-            "Custom subclass should create a 'self._background_img'"
-            " in the __init__() method."
-        )
-        assert hasattr(self, '_background_img'), msg
-        msg = (
-            "Custom subclass should call 'self._compute_and_set_valid_positions(platform)'"
-            " in the __init__() method."
-            " (to compute for valid positions of items in the new env class)"
-        )
-        assert hasattr(self, '_valid_agent_positions'), msg
-        assert hasattr(self, '_valid_food_item_positions'), msg
+            msg = (
+                "Custom subclass should create a 'self._background_img'"
+                " in the __init__() method."
+            )
+            assert hasattr(self, '_background_img'), msg
+            msg = (
+                "Custom subclass should call 'self._compute_and_set_valid_positions(platform)'"
+                " in the __init__() method."
+                " (to compute for valid positions of items in the new env class)"
+            )
+            assert hasattr(self, '_valid_agent_positions'), msg
+            assert hasattr(self, '_valid_food_item_positions'), msg
+
+            # valid item pos check init_agent_position and init_food_positions:
+            if self._init_agent_position is not None:
+                pos = self._init_agent_position
+                if not self.is_valid_position(pos, 'agent', is_env_pos=True):
+                    raise ValueError(f"agent position in 'init_agent_position'"
+                                     f" is not valid: {pos}")
+            if self._init_food_positions is not None:
+                assert len(self._init_food_positions) == self._n_food_items
+                for pos in self._init_food_positions:
+                    if not self.is_valid_position(pos, 'food', is_env_pos=True):
+                        raise ValueError(f"food item positions in 'init_food_positions'"
+                                         f" is not valid: {pos}")
+            # TODO FIXME: check also that agent is not touching food
 
         # init environment state:
         self._init_state()
@@ -1004,20 +1029,26 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
         # get random init positions:
         n_random_positions = 0
+        radius = []
+        items = []
         positions = []
-        if self._init_agent_position is None:
-            n_random_positions += 1
-        else:
-            positions.append(self._init_agent_position)
         if self._init_food_positions is None:
             n_random_positions += self._n_food_items
+            radius += [self._food_size / 2] * self._n_food_items
+            items += ['food'] * self._n_food_items
+        if self._init_agent_position is None:
+            n_random_positions += 1
+            radius += [self._agent_size / 2]
+            items += ['agent']
         if n_random_positions:
-            positions.extend(self._get_random_non_overlapping_positions(
-                n_random_positions,
-                [self._food_size / 2] * self._n_food_items + [self._agent_size / 2],
-                ['food'] * self._n_food_items + ['agent']))
+            positions.extend(
+                self._get_random_non_overlapping_positions(
+                    n_random_positions, radius, items))
         if self._init_food_positions is not None:
-            positions.extend(self._init_food_positions)
+            positions = self._init_food_positions + positions
+        if self._init_agent_position is not None:
+            positions = positions + [self._init_agent_position]
+        logging.debug(f"_init_state(): init positions: {positions}")
 
         # init agent in a random position:
         pos = positions.pop()
@@ -1274,6 +1305,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 'vision_field_angle': self._vision_field_angle,
                 'vision_resolution': self._vision_resolution,
                 'max_steps': self._max_steps,
+                'init_agent_position': self._init_agent_position,
+                'init_food_positions': self._init_food_positions,
+                'observation_noise': self._observation_noise,
                 'fps': self._fps,
                 'seed': self._seed,
                 'time_step': self.time_step,

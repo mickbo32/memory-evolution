@@ -99,8 +99,8 @@ def evaluate_agent(agent,
     for i_episode in range(episodes):
         msg = f'Starting episode #{i_episode} ...'
         logging.debug(msg)
-        if render:
-            print(msg)
+        # if render:
+        #     print(msg)
         if save_gif:
             if rendering_mode:
                 rendering_mode += '+'
@@ -114,7 +114,7 @@ def evaluate_agent(agent,
         # Reset env and agent:
         observation, info = env.reset(return_info=True)
         agent.reset()
-        if isinstance(env, memory_evolution.envs.BaseForagingEnv):
+        if isinstance(env, memory_evolution.envs.BaseForagingEnv) and info['env_info']['init_agent_position'] is None:
             env_agent = info['state']['agent']
             first_agent_pos = env_agent.pos
             # check that agent position change from one episode to the other:
@@ -132,11 +132,11 @@ def evaluate_agent(agent,
             f"Episode reset took {reset_actual_time} actual seconds."
         )
         logging.log(logging.DEBUG + 5, '\n\t' + '\n\t'.join(msg.split('\n')))
-        if render:
-            print(msg, end='\n\n')
+        # if render:
+        #     print(msg, end='\n\n')
         fitness = 0.0  # food collected
         if render or save_gif:
-            # print(observation)
+            # # print(observation)
             env.render(mode=rendering_mode)
         step = 0
         done = False
@@ -187,18 +187,41 @@ def evaluate_agent(agent,
             # # fitness = (fitness, agent_distance_from_start)
             # fitness += agent_distance_from_start / max(env.env_size) * .99
 
-            # fitness: (total_reward, 1 - timesteps used to get all food items if all food items collected):
+            # # fitness: (total_reward, 1 - timesteps used to get all food items if all food items collected):
+            # if env.food_items_collected == env.n_food_items:
+            #     timesteps_normalized = step / env.max_steps
+            #     # note: the agent could take the last food item in the last timestep
+            #     #   thus, 'timesteps_normalized' could be 1
+            #     # note2: more timesteps is bad, less timestep is good, thus fitness: 1 - 'timesteps_normalized'
+            #     logging.debug(f"timesteps_normalized: {timesteps_normalized};"
+            #                   f" 1-timesteps_normalized: {1 - timesteps_normalized}")
+            #     fitness += 1 - timesteps_normalized
+            # else:
+            #     assert step == env.step_count == env.max_steps
+            #     assert env.food_items_collected < env.n_food_items
+
+            # todo: do a function to calculate fitness given reward, timesteps, done, env (as **kwargs)
+            # Multi-objective_optimization with normalized linear scalarization
+            total_reward = fitness
+            total_reward_normalized = fitness / env.maximum_reward  # normalize total_reward
+            assert 0 <= total_reward_normalized <= 1, total_reward_normalized
+            timesteps_normalized = step / env.max_steps  # normalize timesteps
+            # note: the agent could take the last food item in the last timestep
+            #   thus, 'timesteps_normalized' could be 1
+            # note2: more timesteps is bad, less timestep is good, thus fitness: 1 - 'timesteps_normalized'
+            logging.debug(f"timesteps_normalized: {timesteps_normalized};"
+                          f" 1-timesteps_normalized: {1 - timesteps_normalized}")
+            assert 0 <= timesteps_normalized <= 1, timesteps_normalized
+            fitness = (total_reward_normalized + (1 - timesteps_normalized)) / 2
+            assert 0 <= fitness <= 1, fitness
             if env.food_items_collected == env.n_food_items:
-                timesteps_normalized = step / env.max_steps
+                assert total_reward == env.food_items_collected == env.n_food_items == env.maximum_reward
                 # note: the agent could take the last food item in the last timestep
                 #   thus, 'timesteps_normalized' could be 1
-                # note2: more timesteps is bad, less timestep is good, thus fitness: 1 - 'timesteps_normalized'
-                logging.debug(f"timesteps_normalized: {timesteps_normalized};"
-                              f" 1-timesteps_normalized: {1 - timesteps_normalized}")
-                fitness += 1 - timesteps_normalized
+                assert 0 <= step == env.step_count <= env.max_steps
             else:
                 assert step == env.step_count == env.max_steps
-                assert env.food_items_collected < env.n_food_items
+                assert 0 <= env.food_items_collected < env.n_food_items
 
             msg = f"fitness: {fitness}"
             # print(msg)
@@ -220,8 +243,8 @@ def evaluate_agent(agent,
                 f" (in {actual_time} actual seconds)."
             )
             logging.log(logging.DEBUG + 5, '\n\t' + '\n\t'.join(msg.split('\n')))
-            if render:
-                print(msg, end='\n\n')
+            # if render:
+            #     print(msg, end='\n\n')
             if save_gif:
                 gifname = save_gif_name
                 if episode_str:

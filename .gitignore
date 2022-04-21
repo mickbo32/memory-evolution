@@ -7,7 +7,7 @@ logs/
 !/logs/
 /logs/*
 !/logs/clean.sh
-!/logs/copy_all_gifs_and_convert.sh
+!/logs/gif_opt.sh
 
 !/logs/saved_logs/
 /logs/saved_logs/*

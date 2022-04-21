@@ -1,23 +1,27 @@
 #!/usr/bin/env bash
 
 
-# mkdir -p gifs
-# cp -i frames_*/*.gif gifs/
-
-
 # gif_dst=gifs
-gif_dst='gif_copies'
+gif_dst='gifs'
 
 
+if [[ $(find . -maxdepth 1 -name '*.gif') == '' ]]; then
+    echo 'No .gif files to convert and optimize in the current working directory.'
+    exit 0
+fi
 
-# exit if gifs already exists (regardless of type file or directory):
-[[ -e $gif_dst ]] && echo "Err: ${gif_dst} path already exists." 1>&2
-[[ -e $gif_dst ]] && exit 1
 
-# create "${gif_dst}" and copy all gifs there
-mkdir -p "${gif_dst}"
-cp -i frames_*/*.gif "${gif_dst}"
-cp -i *.gif "${gif_dst}"
+# # exit if "${gif_dst}" already exists (regardless of type file or directory):
+# [[ -e "${gif_dst}" ]] && echo "Err: \"${gif_dst}\" path already exists." 1>&2
+# [[ -e "${gif_dst}" ]] && exit 1
+
+# create "${gif_dst}/..." and move all gifs there
+mkdir -p "${gif_dst}/originals"
+mkdir "${gif_dst}/tmp"
+[[ -d "${gif_dst}/tmp" ]] || echo 'ERROR'
+[[ -d "${gif_dst}/tmp" ]] || exit 1
+mv -i frames_*/*.gif "${gif_dst}/tmp"
+mv -i *.gif "${gif_dst}/tmp"
 
 
 # change working directory to "${gif_dst}"
@@ -28,9 +32,9 @@ cd "${gif_dst}"
 # note: do this before creating optimized gifs otherwise those gifs are also converted (and usually mp4 created from optimized gifs are even heavier, thus better keeping the non opt. version for video creation)
 echo "Converting gifs to mp4 ..."
 video_rate=50
-for in_file in *.gif
+for in_file in tmp/*.gif
 do
-    out_file=$(echo ${in_file} | sed -E 's/(.*)\.gif/\1\.mp4/')
+    out_file=$(echo ${in_file} | sed -E 's/tmp\/(.*)\.gif/\1\.mp4/')
     # # gif_duration=$(gifsicle --info "${in_file}" | grep -zoP '(?<=#0).*\n.*(?=s)' | tr -d '\n\0' | sed -E 's/.* //')
     # gif_duration=$(gifsicle --info "${in_file}" | grep -zoP '(?<=#0)(.*\n)*?.*[0-9](?=s\n)' | tr -d '\n\0' | sed -nE 's/.* //p')
     # note: gif_duration could be different for each frame, this takes only the first frame duration
@@ -52,11 +56,16 @@ done
 
 # optimize compression (and reduce number of colors):
 echo "Optimizing and compressing current gifs ..."
-for in_file in *.gif
+for in_file in tmp/*.gif
 do
-    out_file=$(echo ${in_file} | sed -E 's/(.*)\.gif/\1_opt.gif/')
+    out_file=$(echo ${in_file} | sed -E 's/tmp\/(.*)\.gif/\1_opt.gif/')
     gifsicle -O3 --colors 16 --lossy=200 -o "${out_file}" "${in_file}"
 done
+
+
+# move gifs in tmp in originals and delete tmp:
+mv -i tmp/* originals
+rmdir tmp
 
 
 # get .gif duration and info:

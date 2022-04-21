@@ -91,7 +91,6 @@ if __name__ == '__main__':
     logging.info(f"Current working directory: {cwd!r}\n")
     
     # neat random seeding:
-    random.seed(42)
     logging.debug(random.getstate())
     # Use random.setstate(state) to set an old state, where 'state' have been obtained from a previous call to getstate().
 
@@ -110,7 +109,7 @@ if __name__ == '__main__':
     # env = TMaze(seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7, observation_noise=('normal', 0.0, 0.5))
     # env = TMaze(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
 
-    env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=1000, vision_resolution=7)
+    # env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.15, n_food_items=2, vision_depth=.25, vision_field_angle=135, max_steps=1000, vision_resolution=7)
 
     # env = RadialArmMaze(3, 1., window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
     # env = RadialArmMaze(9, window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
@@ -120,7 +119,12 @@ if __name__ == '__main__':
     # env = RadialArmMaze(window_size=200, seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
 
     # env = TMaze(seed=42, agent_size=.10, n_food_items=10, max_steps=500, vision_resolution=7)
-    logging.debug(env._seed)  # todo: use a variable seed (e.g.: seed=42; env=TMaze(seed=seed); logging.debug(seed)) for assignation of seed, don't access the internal variable
+
+    env = RadialArmMaze(corridor_width=.2,
+                        window_size=200, seed=42, agent_size=.075, food_size=.05, n_food_items=1,
+                        init_agent_position=(.5, .1), init_food_positions=((.9, .5),),
+                        vision_depth=.2, vision_field_angle=135, max_steps=400, vision_resolution=8)
+
     print('observation_space:',
           env.observation_space.shape,
           np.asarray(env.observation_space.shape).prod())
