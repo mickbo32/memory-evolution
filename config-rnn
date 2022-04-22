@@ -1,10 +1,11 @@
-#--- parameters for the XOR-2 experiment ---#
+#--- parameters for the spatial memory and navigation experiment ---#
 
 [NEAT]
-fitness_criterion     = max
-fitness_threshold     = 5
-pop_size              = 20
-reset_on_extinction   = False
+fitness_criterion      = max
+fitness_threshold      = 0.9
+no_fitness_termination = False
+pop_size               = 250
+reset_on_extinction    = False
 
 [DefaultGenome]
 # node activation options
@@ -20,10 +21,13 @@ aggregation_options     = sum
 # node bias options
 bias_init_mean          = 0.0
 bias_init_stdev         = 1.0
+bias_init_type          = normal
 bias_max_value          = 30.0
 bias_min_value          = -30.0
-bias_mutate_power       = 0.5
-bias_mutate_rate        = 0.7
+# bias_mutate_power       = 0.5
+bias_mutate_power       = 0.1
+# bias_mutate_rate        = 0.7
+bias_mutate_rate        = 0.3
 bias_replace_rate       = 0.1
 
 # genome compatibility options
@@ -37,8 +41,10 @@ conn_delete_prob        = 0.5
 # connection enable options
 enabled_default         = True
 enabled_mutate_rate     = 0.01
+enabled_rate_to_false_add = 0.0
+enabled_rate_to_true_add  = 0.0
 
-feed_forward            = True
+feed_forward            = False
 initial_connection      = partial_direct 0.5
 
 # node add/remove rates
@@ -47,28 +53,42 @@ node_delete_prob        = 0.2
 
 # network parameters
 num_hidden              = 0
-num_inputs              = 147
+# num_inputs              = 91
+num_inputs              = 104
 num_outputs             = 2
 
 # node response options
 response_init_mean      = 1.0
 response_init_stdev     = 0.0
+response_init_type      = normal
 response_max_value      = 30.0
 response_min_value      = -30.0
-response_mutate_power   = 0.0
-response_mutate_rate    = 0.0
-response_replace_rate   = 0.0
+# response_mutate_power   = 0.0
+# response_mutate_rate    = 0.0
+# response_replace_rate   = 0.0
+response_mutate_power   = 0.01
+response_mutate_rate    = 0.01
+response_replace_rate   = 0.0001
+
+# single/multiple mutation options
+single_structural_mutation = False
+structural_mutation_surer  = default
 
 # connection weight options
 weight_init_mean        = 0.0
 weight_init_stdev       = 1.0
+weight_init_type        = normal
 weight_max_value        = 30
 weight_min_value        = -30
-weight_mutate_power     = 0.5
-weight_mutate_rate      = 0.8
+# weight_mutate_power     = 0.5
+weight_mutate_power     = 0.4
+# weight_mutate_rate      = 0.8
+weight_mutate_rate      = 0.5
 weight_replace_rate     = 0.1
 
 [DefaultSpeciesSet]
+# compatibility_threshold = 3.0  # too few species, just one (with pop 20)
+# compatibility_threshold = 2.0  # too many species (with pop 200)
 compatibility_threshold = 3.0
 
 [DefaultStagnation]
@@ -79,4 +99,5 @@ species_elitism      = 2
 [DefaultReproduction]
 elitism            = 2
 survival_threshold = 0.2
+min_species_size   = 2
 

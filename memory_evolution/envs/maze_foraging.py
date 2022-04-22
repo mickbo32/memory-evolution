@@ -1,8 +1,8 @@
 from collections import defaultdict, Counter
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 import math
 from numbers import Number, Real
-from typing import Optional, Union, Any
+from typing import Any, Literal, Optional, Union
 from warnings import warn
 import sys
 
@@ -12,88 +12,107 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.random import SeedSequence, default_rng
-import pygame
+import pygame as pg
 from shapely.affinity import rotate, scale, translate
 from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiPolygon
 from shapely.ops import unary_union, triangulate
 
-from memory_evolution.utils import COLORS, is_color, is_simple_polygon, Pos, convert_image_to_pygame
+import memory_evolution
+from memory_evolution.geometry import is_simple_polygon, Pos
+from memory_evolution.utils import convert_image_to_pygame
 from memory_evolution.utils import MustOverride, override
 
-from .base_foraging import BaseForagingEnv, Agent, FoodItem
+from .base_foraging import BaseForagingEnv, Agent, FoodItem, get_valid_item_positions_mask
 
 
 class MazeForagingEnv(BaseForagingEnv):
 
     def __init__(self,
-                 borders: list[Polygon],
-                 window_size: Union[int, Sequence[int]] = 640,  # (640, 480),
-                 env_size: Union[float, Sequence[float]] = 1.,
-                 n_food_items: int = 3,
-                 rotation_step: float = 20,
-                 forward_step: float = .01,
-                 agent_size: float = .05,
-                 food_size: float = .05,
-                 vision_depth: float = .2,
-                 vision_field_angle: float = 180.,
-                 vision_resolution: int = 10,
-                 max_steps: Optional[int] = None,
-                 fps: Optional[int] = None,
-                 seed=None,
+                 *,
+                 borders: Optional[Iterable[Polygon]] = None,
+                 platform: Optional[Polygon] = None,
+                 **kwargs
                  ) -> None:
+        super().__init__(
+            **kwargs
+        )
+
+        if 1 != sum((borders is None,  platform is None)):
+            raise ValueError("only one among 'borders' or 'platform' should be provided.")
+
+        if borders is not None:
+            assert platform is None
+            platform = self.get_platform_from_borders(borders)
+        else:
+            if not isinstance(platform, Polygon):
+                raise TypeError(f"'platform' should be a Polygon, instead got platform of type {type(platform)}")
+            if not is_simple_polygon(self._platform):
+                raise ValueError(f"'platform' should be a simple polygon")
+
+        # override self._platform:
+        assert isinstance(platform, Polygon), type(platform)
+        assert is_simple_polygon(platform), platform.wkt
+        self._platform = platform
+
+        # update background np.ndarray and background_img pygame image
+        border_color = self.outside_color
+        background = self._soil.copy()
+        borders_mask = get_valid_item_positions_mask(self._platform, 0., self.window_size, self.env_size)
+        background = convert_image_to_pygame(background)
+        assert self._soil.shape[1::-1] == background.get_size()
+        self._background_img = borders_mask.to_surface(
+            background,
+            setsurface=background,
+            unsetcolor=border_color
+        )
+
+        # update valid positions:
+        # valid positions:
+        self._compute_and_set_valid_positions(self._platform)
+
+    @property
+    @override
+    def maximum_reward(self):
+        return super().maximum_reward
+
+    def get_platform_from_borders(self, borders: Iterable):
+
+        if not isinstance(borders, Iterable):
+            raise TypeError(f"'borders' should be iterable, instead borders type is not ({type(borders)})")
+        if not isinstance(borders, list):
+            borders = list(borders)
 
         if not all(isinstance(plg, Polygon) for plg in borders):
-            raise TypeError("'borders' should be a list of 'Polygon' objects")
+            raise TypeError("'borders' should be an iterable of 'Polygon' objects")
         if not all(plg.is_valid for plg in borders):
             raise ValueError("'borders' contain a non-valid polygon object")
+        # empty interiors, no holes:
         if not all(isinstance(plg.boundary, LineString) and not list(plg.interiors)
                    for plg in borders):
             # not MultiLineString boundary
             # empty interiors, no holes
             raise ValueError("'borders' contain a complex polygon object, "
                              "only simple polygons are allowed")
-
-        super().__init__(
-            window_size=window_size,
-            env_size=env_size,
-            n_food_items=n_food_items,
-            rotation_step=rotation_step,
-            forward_step=forward_step,
-            agent_size=agent_size,
-            food_size=food_size,
-            vision_depth=vision_depth,
-            vision_field_angle=vision_field_angle,
-            vision_resolution=vision_resolution,
-            max_steps=max_steps,
-            fps=fps,
-            seed=seed,
-        )
-
-        self.border_color = self.outside_color
-        self._borders = borders
-        self.__borders_coords_on_screen = [[self._get_point_env2win(pt) for pt in plg.boundary.coords]
-                                           for plg in self._borders]
-        self.__borders_union = unary_union(self._borders)
-        for plg in self.__borders_coords_on_screen:
+        __borders_coords_on_screen = [[self.get_point_env2win(pt) for pt in plg.boundary.coords]
+                                      for plg in borders]
+        __borders_union = unary_union(borders)
+        for plg in __borders_coords_on_screen:
             plg = Polygon(plg)
             assert is_simple_polygon(plg), plg.wkt
-        # update self._platform:
-        self._platform = self._platform.difference(self.__borders_union)
-        if not is_simple_polygon(self._platform):
+        # get new platform from base self._platform:
+        base_platform = Polygon((Point(0, 0), Point(0, self._env_size[1]),
+                                 Point(*self._env_size), Point(self._env_size[0], 0)))
+        platform = base_platform.difference(__borders_union)
+        if not is_simple_polygon(platform):
             raise ValueError(f"'borders' create an unreachable part in the maze "
-                             f"(or there is a problem with self._platform: "
-                             f"{(self._platform.wkt, self._platform.boundary)})")
+                             f"(or there is a problem with the new platform: "
+                             f"{(platform.wkt, platform.boundary)})")
 
-        # # update background np.ndarray and background_img pygame image
-        # self._background = self._soil.copy()
-        # assert self.env_space.contains(self._background)
-        # self._background_img = convert_image_to_pygame(self._background)
+        return platform
 
     def _draw_env(self, screen) -> None:
-        # draw borders: (inefficient because it does this each rendering loop)
-        # todo: do it efficiently
-        for plg in self.__borders_coords_on_screen:
-            pygame.draw.polygon(screen, self.border_color, plg)
+        # draw stuff:
+        # pass
 
         # draw agent and food items later, so you can see them above borders
         # if for some reasons they are plotted outside the maze, but mainly you can see
@@ -110,23 +129,28 @@ class MazeForagingEnv(BaseForagingEnv):
         return super()._get_observation()
 
     def _get_point_color(self, point):
-        col = super()._get_point_color(point)
-        if col is self.outside_color and col is not self.border_color:
-            if self.__borders_union.covers(point):
-                col = self.border_color
-        return col
+        # base method it reads the env_img, thus if you update that in the init it is enough.
+        return super()._get_point_color(point)
 
     def _is_done(self) -> bool:
         return super()._is_done()
 
     def _get_info(self) -> dict:
         info = super()._get_info()
-        info['env_info']['borders'] = self._borders
+        info['env_info']['platform'] = self._platform
         return info
 
-    def is_valid_position(self, pos: Union[Point, Polygon]) -> bool:
-        return super().is_valid_position(pos)
-        # and unary_union(self._borders).disjoint(pos)
-        # borders check is not needed since the self._platform is updated
-        # by removing borders from it in self.__init__()
+    def is_valid_position(self, pos, item: Literal['agent', 'food'], is_env_pos: bool = True) -> bool:
+        return super().is_valid_position(pos, item, is_env_pos)
+
+    def _get_random_non_overlapping_positions(self,
+                                              n,
+                                              radius: Union[list, int],
+                                              items=None,
+                                              ) -> list[Pos]:
+        return memory_evolution.geometry.get_random_non_overlapping_positions_with_lasvegas(
+            n, radius, self._platform, self._env_size, self.env_space.np_random,
+            self, items,
+            optimization_with_platform_triangulation=True,
+        )
 

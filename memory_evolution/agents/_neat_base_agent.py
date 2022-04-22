@@ -7,6 +7,7 @@ import multiprocessing
 from numbers import Number, Real
 from operator import mul
 import os
+import pickle
 from typing import Optional, Union, Any, Literal
 from warnings import warn
 import sys
@@ -27,12 +28,7 @@ from shapely.ops import unary_union, triangulate
 
 from memory_evolution.agents import BaseAgent
 from memory_evolution.agents.exceptions import EnvironmentNotSetError
-from memory_evolution.utils import (
-    black_n_white, COLORS, convert_image_to_pygame, is_color,
-    is_simple_polygon, is_triangle,
-    Pos, triangulate_nonconvex_polygon,
-)
-from memory_evolution.utils import evaluate_agent
+from memory_evolution.evaluate import evaluate_agent
 from memory_evolution.utils import MustOverride, override
 from .exceptions import NotEvolvedError
 
@@ -134,7 +130,6 @@ class BaseNeatAgent(BaseAgent, ABC):
         self._genome = genome
         net = self.phenotype_class.create(self._genome, self.config)
         self._phenotype = net
-        return self._genome
 
     @property
     def phenotype(self):
@@ -146,20 +141,6 @@ class BaseNeatAgent(BaseAgent, ABC):
             )
         assert self._phenotype is not None, (self._genome, self._phenotype)
         return self._phenotype
-
-    # def get_eval_genome_func()
-    # @classmethod
-    def eval_genome(self, genome, config) -> float:
-        """Use the Agent network phenotype and the discrete actuator force function."""
-        assert genome is not None, self
-        assert self._env is not None, self
-        agent = type(self)(config, genome=genome)
-        agent.set_env(self.get_env())  # fixme: parallel execution should make a copy of env for each pool.
-        #                              # todo: is it doing this?
-        assert agent._genome is not None, agent
-        assert agent._phenotype is not None, agent
-        fitness = evaluate_agent(agent, self.get_env(), render=self._render)
-        return fitness
 
     @abstractmethod
     def action(self, observation: np.ndarray) -> np.ndarray:
@@ -185,6 +166,21 @@ class BaseNeatAgent(BaseAgent, ABC):
             )
         assert self._phenotype is not None, (self._genome, self._phenotype)
         return NotImplemented
+
+    # def get_eval_genome_func()
+    # @classmethod
+    def eval_genome(self, genome, config) -> float:
+        """Use the Agent network phenotype and the discrete actuator force function."""
+        assert genome is not None, self
+        assert self._env is not None, self
+        agent = type(self)(config, genome=genome)
+        agent.set_env(self.get_env())  # fixme: parallel execution should make a copy of env for each pool.
+        #                              # todo: is it doing this?
+        assert agent._genome is not None, agent
+        assert agent._phenotype is not None, agent
+        fitness = evaluate_agent(agent, self.get_env(),
+                                 episodes=2, render=self._render)
+        return fitness
 
     @abstractmethod
     def reset(self) -> None:
@@ -243,10 +239,10 @@ class BaseNeatAgent(BaseAgent, ABC):
         neat.visualize.plot_stats(stats, ylog=stats_ylog, view=view, filename=filename_stats)
         neat.visualize.plot_species(stats, view=view, filename=filename_speciation)
 
-    @abstractmethod
     def visualize_genome(self, genome, name='Genome',
                          view=False, filename=None,
-                         show_disabled=True, prune_unused=False):
+                         show_disabled=True, prune_unused=False,
+                         node_colors=None, format='sgv'):  # 'format' abbreviation: fmt
         """Display the genome."""
         print('\n{!s}:\n{!s}'.format(name, genome))
 
@@ -256,7 +252,9 @@ class BaseNeatAgent(BaseAgent, ABC):
             filename=filename,
             node_names=node_names,
             show_disabled=show_disabled,
-            prune_unused=prune_unused
+            prune_unused=prune_unused,
+            node_colors=node_colors,
+            format=format
         )
 
     def evolve(self,
@@ -264,7 +262,11 @@ class BaseNeatAgent(BaseAgent, ABC):
                parallel=False,
                checkpointer: Union[None, int, float, neat.Checkpointer] = None,
                render: bool = False,
-               ):
+               filename_tag: str = '',
+               path_dir: str = '',
+               image_format: str = 'svg',
+               render_best: bool = False,  # render the best agent
+               ) -> tuple[neat.genome.DefaultGenome, neat.statistics.StatisticsReporter]:
         """Evolve a population of agents of the type of self and then return
         the best genome. The best genome is also saved in self. It returns also
         some stats about the evolution.
@@ -309,6 +311,7 @@ class BaseNeatAgent(BaseAgent, ABC):
         start_time_thread_time = time.thread_time_ns()
         print(f"Evolution started at", pd.Timestamp.utcnow().isoformat(' '))
         winner = self.evolve_population(p, n, parallel=parallel)
+        self.genome = winner
         end_time = time.time()
         end_time_perf_counter = time.perf_counter_ns()
         end_time_process_time = time.process_time_ns()
@@ -323,30 +326,43 @@ class BaseNeatAgent(BaseAgent, ABC):
               f" (for a total of {pd.Timedelta(nanoseconds=tot_time_process_time)!s} and"
               f" {pd.Timedelta(nanoseconds=tot_time_thread_time)!s}).")
 
+        if image_format.startswith('.'):
+            image_format = image_format[1:]
+        def make_filename(filename):
+            return os.path.join(path_dir, filename_tag + filename)
+
+        # Pickle winner.
+        with open(make_filename("genome.pickle"), "wb") as f:
+            pickle.dump(winner, f)
+
         # Display stats on the evolution performed.
-        self.visualize_evolution(stats, stats_ylog=True, view=True)
+        self.visualize_evolution(stats, stats_ylog=True, view=True,
+                                 filename_stats=make_filename("fitness." + image_format),
+                                 filename_speciation=make_filename("speciation." + image_format))
 
         # Display the winning genome.
         print('\nBest genome:\n{!s}'.format(winner))
-        self.visualize_genome(winner, view=True, name='Best Genome', filename="winner-genome.gv")
+        self.visualize_genome(winner, view=True, name='Best Genome', filename=make_filename("winner-genome.gv"),
+                              format=image_format)
 
         # Show output of the most fit genome against training data.
-        print('\nOutput:')
-        print('rendering one episode with the best agent...')
-        evaluate_agent(self, self.get_env(), render=True)
+        if render_best:
+            print('\nOutput:')
+            print('rendering one episode with the best agent...')
+            evaluate_agent(self, self.get_env(), episodes=1, render=True, save_gif=False)
 
-        if checkpointer is not None:
-            last_cp_gen = checkpointer.last_generation_checkpoint
-            last_cp_time = checkpointer.last_time_checkpoint
-            last_cp_time_from_start = last_cp_time - start_time
-            print(f"Last checkpoint saved at generation #{last_cp_gen}"
-                  f" after {last_cp_time_from_start} seconds from start.")
-            print("Restoring checkpoint and running up to 10 generations:")
-            p = neat.Checkpointer.restore_checkpoint(
-                f'neat-checkpoint-{last_cp_gen}')
-            p.run(self.eval_genomes, 10)
+        # # Try to reload population from a saved checkpointer and run evolution for few generations.
+        # if checkpointer is not None and checkpointer.last_generation_checkpoint != -1:
+        #     last_cp_gen = checkpointer.last_generation_checkpoint
+        #     last_cp_time = checkpointer.last_time_checkpoint
+        #     last_cp_time_from_start = last_cp_time - start_time
+        #     print(f"Last checkpoint saved at generation #{last_cp_gen}"
+        #           f" after {last_cp_time_from_start} seconds from start.")
+        #     print("Restoring checkpoint and running up to 10 generations:")
+        #     p = neat.Checkpointer.restore_checkpoint(
+        #         make_filename(f'neat-checkpoint-{last_cp_gen}'))
+        #     p.run(self.eval_genomes, min(10, max(1, last_cp_gen // 4)))
 
         self._render = prev_rendering_option
-        self.genome = winner
         return winner, stats
 

@@ -1,9 +1,15 @@
+import json
 import logging
+import multiprocessing
 import os
+import pickle
 from pprint import pprint
 import random  # neat uses random  # todo: allow seeding in neat
+import re
+import shutil
 import sys
 import time
+from typing import Optional
 
 import gym
 import matplotlib as mpl
@@ -15,153 +21,78 @@ import pandas as pd
 
 from gym.utils.env_checker import check_env  # from stable_baselines.common.env_checker import check_env
 
-from memory_evolution.agents import BaseAgent, RnnNeatAgent, CtrnnNeatAgent
-from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze
-from memory_evolution.utils import evaluate_agent
+from memory_evolution.agents import RandomActionAgent, RnnNeatAgent, CtrnnNeatAgent
+from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze, RadialArmMaze
+from memory_evolution.evaluate import evaluate_agent
+from memory_evolution.utils import set_main_logger
 
 # matplotlib settings:
-mpl.use('Qt5Agg')  # Change matplotlib backend to show correctly in PyCharm.
-
-# logging settings:
-if __name__ == '__main__':
-    logFormatter = logging.Formatter(
-        "%(asctime)s [%(processName)-12s %(process)-7d] [%(threadName)-12s %(thread)-7d] "
-        "[%(levelname)-5s] %(module)-15s:  %(message)s")
-
-    rootLogger = logging.getLogger()
-    fileHandler = logging.FileHandler("mylogs.log")
-    fileHandler.setFormatter(logFormatter)
-    fileHandler.setLevel(logging.DEBUG)
-    rootLogger.addHandler(fileHandler)
-
-    consoleHandler = logging.StreamHandler(sys.stderr)  # sys.stderr default
-    consoleHandler.setFormatter(logFormatter)
-    consoleHandler.setLevel(logging.WARNING)
-    rootLogger.addHandler(consoleHandler)
-
-    PRINT_ALL_MESSAGES_ON_STDOUT = False
-    if PRINT_ALL_MESSAGES_ON_STDOUT:
-        consoleStdoutHandler = logging.StreamHandler(sys.stdout)
-        consoleStdoutHandler.setFormatter(logging.Formatter("%(message)s"))  # default
-        consoleStdoutHandler.setLevel(logging.NOTSET)
-        rootLogger.addHandler(consoleStdoutHandler)
-
-    rootLogger.setLevel(logging.NOTSET)  # logging.WARNING default for root, logging.NOTSET default for others.
-
-# neat random seeding:
-random.seed(42)
-logging.debug(random.getstate())
-
-
-class RandomAgent(BaseAgent):
-
-    def __init__(self, env):
-        super().__init__()
-        self.set_env(env)
-
-    def action(self, obs):
-        return self.get_env().action_space.sample()
-
-    def reset(self):
-        pass
-
-    @staticmethod
-    def eval_genome(genome, config) -> float:
-        fitness = 0.0
-        return fitness
-
-    def evolve(self, *args, **kwargs):
-        return self
-
-    def run(self, *args, **kwargs):
-        # Evolution
-        # None
-
-        # Run until a solution is found. (Run for up to n generations.)
-        start_time = time.time()
-        # start_time_monotonic = time.monotonic_ns()
-        # start_time_perf_counter = time.perf_counter_ns()
-        # start_time_process_time = time.process_time_ns()
-        # start_time_thread_time = time.thread_time_ns()
-        start_time_perf_counter = time.perf_counter_ns()
-        start_time_process_time = time.process_time_ns()
-        start_time_thread_time = time.thread_time_ns()
-        print(f"Evolution started at", pd.Timestamp.utcnow().isoformat(' '))
-        winner = None
-        end_time = time.time()
-        end_time_perf_counter = time.perf_counter_ns()
-        end_time_process_time = time.process_time_ns()
-        end_time_thread_time = time.thread_time_ns()
-        tot_time_perf_counter = end_time_perf_counter - start_time_perf_counter
-        tot_time_process_time = end_time_process_time - start_time_process_time
-        tot_time_thread_time = end_time_thread_time - start_time_thread_time
-        print(f"Evolution took {tot_time_perf_counter / 10**9} seconds"
-              f" (for a total of {tot_time_process_time / 10**9} seconds of process time and"
-              f" {tot_time_thread_time / 10**9} seconds of thread time).")
-        print(f"equal to {pd.Timedelta(nanoseconds=tot_time_perf_counter)!s}"
-              f" (for a total of {pd.Timedelta(nanoseconds=tot_time_process_time)!s} and"
-              f" {pd.Timedelta(nanoseconds=tot_time_thread_time)!s}).")
-
-        # Display stats on the evolution performed.
-        pass
-
-        # Display the winning genome.
-        print('\nNone genome:\n{!s}'.format(winner))
-
-        # Show output of the most fit genome against training data.
-        print('\nOutput:')
-        winner_net = self.phenotype.create(winner, self.config)
-        # todo: (input, action) + render
-        # for xi, xo in zip(xor_inputs, xor_outputs):
-        #     output = winner_net.activate(xi)
-        #     print("input {!r}, expected output {!r}, got {!r}".format(xi, xo, output))
-
-
-def run(env: gym.Env, agent=None, episodes=1) -> None:
-    """Runs the main loop: evolve, interact, repeat.
-
-    For ``episodes``
-
-    Args:
-        env: a gym environment object (the gym environment constructor should
-            be a subclass of gym.Evn)
-        agent: the agent, an object with an ``action()`` method which takes the
-            observation as argument and returns a valid action and with a
-            ``reset()`` method which reset the agent to an initial
-            state ``t==0``;
-            if agent is ``None``, it performs random actions.
-        episodes: number of independent episodes that will be run.
-    """
-    print('Main loop')
-
-    if agent is None:
-        agent = RandomAgent(env)
-
-    for i_episode in range(episodes):
-        observation = env.reset()
-        t = 0
-        for t in range(100):
-            assert env.step_count == t, (env.step_count, t)
-            env.render()
-            # print(observation)
-            action = env.action_space.sample()
-            assert env.step_count == t, (env.step_count, t)
-            observation, reward, done, info = env.step(action)
-            assert env.step_count == t + 1, (env.step_count, t)
-            # print(observation)
-            # print(info['state']['agent'])
-            # print(len(info['state']['food_items']), info['state']['food_items'])
-            # pprint(info)
-            if done:
-                env.render()
-                print("Episode finished after {} timesteps".format(t + 1))
-                break
-        else:
-            assert False, "Episode has not finished after {} timesteps".format(t + 1)
-    env.close()
+isRunningInPyCharm = "PYCHARM_HOSTED" in os.environ
+if isRunningInPyCharm:
+    mpl.use('Qt5Agg')  # Change matplotlib backend to show correctly in PyCharm.
 
 
 if __name__ == '__main__':
+
+    # parse command-line arguments passed to the program:
+    JOB_ID = ''  # type: str
+    if len(sys.argv) == 1:  # local execution
+        pass
+    elif len(sys.argv) == 2:  # remote execution
+
+        # remote execution,
+        # JOB_ID should be passed as argument to the program when running it on the remote cluster server.
+        JOB_ID = str(sys.argv[1])
+        match = re.match(r"^([0-9]+).hpc-head-n1.unitn.it$", JOB_ID)
+        if match:
+            JOB_ID = match.group(1)  # type: str
+        assert isinstance(JOB_ID, str), type(JOB_ID)
+
+        # remote execution, no input devices.
+        os.environ['SDL_AUDIODRIVER'] = 'dummy'
+        os.environ['SDL_VIDEODRIVER'] = 'dummy'
+        os.environ['SDL_MOUSEDRIVER'] = 'dummy'
+        """
+        # Alternatively,
+        # Environment variables can be set in the script which calls this program:
+        #...
+        echo "Starting (PBS_JOBID=${PBS_JOBID}) ..."
+        source ~/miniconda3/bin/activate evo
+        python --version
+        export SDL_AUDIODRIVER='dummy'
+        export SDL_VIDEODRIVER='dummy'
+        export SDL_MOUSEDRIVER='dummy'
+        python memory-evolution/main.py "${PBS_JOBID}"
+        """
+    else:
+        raise RuntimeError(sys.argv)
+
+    # ----- Settings -----
+
+    # logging settings:
+    logging_dir, UTCNOW = set_main_logger(file_handler_all=None,
+                                          stdout_handler=logging.INFO,
+                                          file_handler_now_filename_fmt="log_" + JOB_ID + "_{utcnow}.log")
+    logging.info(__file__)
+
+    # if job_id is passed to the program, use it in the log tag:
+    if JOB_ID:
+        LOG_TAG = JOB_ID + '_' + UTCNOW
+    else:
+        LOG_TAG = UTCNOW
+    logging.info('TAG: ' + LOG_TAG)
+    
+    # get some stats:
+    version_msg = f"Python version\n{sys.version}\nVersion info\n{sys.version_info}\n"
+    logging.info(version_msg)
+    cpu_count = multiprocessing.cpu_count()
+    logging.info(f"CPU count: {cpu_count}\n")
+    cwd = os.getcwd()
+    logging.info(f"Current working directory: {cwd!r}\n")
+    
+    # neat random seeding:
+    logging.debug(random.getstate())
+    # Use random.setstate(state) to set an old state, where 'state' have been obtained from a previous call to getstate().
 
     # ----- ENVIRONMENT -----
 
@@ -173,11 +104,41 @@ if __name__ == '__main__':
     # env = TMaze(env_size=(1.5, 1.), fps=None, seed=42, n_food_items=50)
     # env = TMaze(.1001, env_size=(1.5, 1.), fps=None, seed=42)
     # env = TMaze(seed=42)
-    env = TMaze(seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
+    # env = TMaze(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)  # todo: use in tests
+    # env = BaseForagingEnv(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7) # todo: use in tests
+    # env = TMaze(seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7, observation_noise=('normal', 0.0, 0.5))
+    # env = TMaze(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
+
+    # env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.15, n_food_items=2, vision_depth=.25, vision_field_angle=135, max_steps=1000, vision_resolution=7)
+
+    # env = RadialArmMaze(3, 1., window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
+    # env = RadialArmMaze(9, window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
+    # env = RadialArmMaze(5, 1., window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
+    # env = RadialArmMaze(2, window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
+    # env = RadialArmMaze(4, window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
+    # env = RadialArmMaze(window_size=200, seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
+
+    # env = TMaze(seed=42, agent_size=.10, n_food_items=10, max_steps=500, vision_resolution=7)
+
+    env = RadialArmMaze(corridor_width=.2,
+                        window_size=200, seed=42, agent_size=.075, food_size=.05, n_food_items=1,
+                        init_agent_position=(.5, .1), init_food_positions=((.9, .5),),
+                        vision_depth=.2, vision_field_angle=135, max_steps=400, vision_resolution=8)
+
     print('observation_space:',
           env.observation_space.shape,
           np.asarray(env.observation_space.shape).prod())
+    # picKle env:
+    with open(os.path.join(logging_dir, LOG_TAG + '_env.pickle'), "wb") as f:
+        pickle.dump(env, f)
+    # check pickle env:  # todo: move in tests
+    with open(os.path.join(logging_dir, LOG_TAG + '_env.pickle'), "rb") as f:
+        _loaded_env = pickle.load(f)
+        assert type(_loaded_env) is type(env)
+        assert _loaded_env._init_params == env._init_params
+    # check env:
     check_env(env)  # todo: move in tests
+    print('Env checked.')
 
     # print(env.action_space)  # Discrete(4)
     # print(env.observation_space)  # Box([[[0] ... [255]]], (5, 5, 1), uint8)
@@ -192,29 +153,50 @@ if __name__ == '__main__':
     # here so that the script will run successfully regardless of the
     # current working directory.
     local_dir = os.path.dirname(__file__)
-
     config_path = os.path.join(local_dir, 'config-rnn')
-    agent = RnnNeatAgent(config_path)
+    # logging: save current config file for later use:
+    shutil.copyfile(config_path, os.path.join(logging_dir, LOG_TAG + '_config'))
+
+    Phenotype = RnnNeatAgent
+    with open(os.path.join(logging_dir, LOG_TAG + '_phenotype.pickle'), "wb") as f:
+        pickle.dump(Phenotype, f)
+    agent = Phenotype(config_path)
 
     # ----- MAIN LOOP -----
     # Evolve, interact, repeat.
 
-    # evaluate_agent(RandomAgent(env), env, episodes=2, render=True)
+    # Rendering settings:
+    if not JOB_ID:  # local execution
+        # note: if you render all will be slow, but good for debugging
+        # note2: if you render all and if you minimize the window or you put it in a part of the screen not visible
+        #        the algorithm will go way faster, so you can make it faster and debugging
+        #        at your choice by knowing this.
+        render, parallel, render_best = True, False, True      # local execution, render all
+        # render, parallel, render_best = False, True, True     # local execution, show best
+    else:  # remote execution
+        render, parallel, render_best = False, True, False    # remote execution, just save gifs
+
+    # evaluate_agent(RandomActionAgent(env), env, episodes=2, render=True)
 
     checkpointer = neat.Checkpointer(generation_interval=100,
                                      time_interval_seconds=300,
-                                     filename_prefix='neat-checkpoint-')
+                                     filename_prefix=os.path.join(
+                                         logging_dir,
+                                         LOG_TAG + '_neat-checkpoint-'))
 
     agent.set_env(env)
-    winner = agent.evolve(render=False, checkpointer=checkpointer, parallel=True)
-    print(type(winner))
-    evaluate_agent(agent, env, episodes=2, render=True)
-    # run(env, episodes=2)
+    winner = agent.evolve(1000, render=render, checkpointer=checkpointer, parallel=parallel,
+                          filename_tag=LOG_TAG + '_', path_dir=logging_dir, image_format='png',
+                          render_best=False)
+    # fixme: todo: parallel=True use the same seed for the environment in each process
+    #     (but for the agent is correctly using a different seed it seems)
 
-try:
-    eval_genome
-except NameError:
-    pass
-else:
-    raise AssertionError
+    # render the best agent:
+    evaluate_agent(agent, env, episodes=2, render=render_best,
+                   save_gif=True,
+                   save_gif_name=os.path.join(logging_dir, LOG_TAG + '_frames.gif'))
+
+    # ----- CLOSING AND REPORTING -----
+
+    env.close()
 

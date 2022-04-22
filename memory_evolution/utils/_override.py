@@ -9,7 +9,58 @@ def override(funcobj):
     a class which the metaclass is MustOverrideMeta (e.g. MustOverride).
     If a class method use it, and the class is later subclassed,
     the subclass needs override the method, otherwise a TypeError
-    will be raised."""
+    will be raised.
+
+    Examples:
+        # TODO FIXME: Descriptors don't work!! (property, staticmethod, classmethod)
+
+        >>> class A(MustOverride):
+        >>>
+        >>>     def normal_method(self):
+        >>>         return 0
+        >>>
+        >>>     @override
+        >>>     def method(self):
+        >>>         return 0
+        >>>
+        >>>     @property
+        >>>     @override
+        >>>     def attribute(self):
+        >>>         return 0
+        >>>
+        >>>     @staticmethod
+        >>>     @override
+        >>>     def static_method():
+        >>>         return 0
+
+        >>> try:
+        >>>     class B(A):
+        >>>         pass
+        >>> except NotOverriddenError as err:
+        >>>     print(f"{type(err).__module__}.{type(err).__qualname__}: {err}")
+        >>> else:
+        >>>     raise AssertionError
+        >>>
+        >>> try:
+        >>>     class B(A):
+        >>>         def method(self):
+        >>>             pass
+        >>> except NotOverriddenError as err:
+        >>>     print(f"{type(err).__module__}.{type(err).__qualname__}: {err}")
+        >>> else:
+        >>>     raise AssertionError  # TODO FIXME: Descriptors don't work!! (property, staticmethod, classmethod)
+        >>>
+        >>> class B(A):
+        >>>     def method(self):
+        >>>         pass
+        >>>     @property
+        >>>     def attribute(self):
+        >>>         return super().attribute
+        >>>     @staticmethod
+        >>>     def static_method():
+        >>>         return super().static_method()
+
+    """
     funcobj.__override__ = True
     return funcobj
 

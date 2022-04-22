@@ -21,12 +21,6 @@ from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiP
 from shapely.ops import unary_union, triangulate
 
 from memory_evolution.agents import BaseNeatAgent
-from memory_evolution.utils import (
-    black_n_white, COLORS, convert_image_to_pygame, is_color,
-    is_simple_polygon, is_triangle,
-    Pos, triangulate_nonconvex_polygon,
-)
-from memory_evolution.utils import evaluate_agent
 from memory_evolution.utils import MustOverride, override
 
 
@@ -48,15 +42,4 @@ class CtrnnNeatAgent(BaseNeatAgent):
         """Extends the base method."""
         super().reset()
         #self._t = 0
-
-    def visualize_genome(self, genome, name='Genome',
-                         view=False, filename=None,
-                         show_disabled=True, prune_unused=False):
-        """Extends the base method."""
-        super().visualize_genome(genome,
-                                 name=name,
-                                 view=view,
-                                 filename=filename,
-                                 show_disabled=show_disabled,
-                                 prune_unused=prune_unused)
 

@@ -2,6 +2,16 @@
 # my
 /_prove/
 *.log
+logs/
+
+!/logs/
+/logs/*
+!/logs/clean.sh
+!/logs/gif_opt.sh
+
+!/logs/saved_logs/
+/logs/saved_logs/*
+!/logs/saved_logs/README.md
 
 
 # pycharm

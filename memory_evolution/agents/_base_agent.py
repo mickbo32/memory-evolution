@@ -18,17 +18,8 @@ import neat
 import numpy as np
 from numpy.random import SeedSequence, default_rng
 import pandas as pd
-import pygame
-from shapely.affinity import rotate, scale, translate
-from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiPoint, MultiPolygon
-from shapely.ops import unary_union, triangulate
 
-from memory_evolution.utils import (
-    black_n_white, COLORS, convert_image_to_pygame, is_color,
-    is_simple_polygon, is_triangle,
-    Pos, triangulate_nonconvex_polygon,
-)
-from memory_evolution.utils import evaluate_agent
+from memory_evolution.evaluate import evaluate_agent
 from memory_evolution.utils import MustOverride, override
 from .exceptions import EnvironmentNotSetError
 
@@ -51,6 +42,13 @@ class BaseAgent(ABC):
     def set_env(self, env: gym.Env) -> None:
         self._env = env
 
+    @staticmethod
+    def normalize_observation(observation: np.ndarray) -> np.ndarray:
+        return observation.reshape(-1) / 255
+        # returned dtype is dtype('float64'), should it be cast to np.float32 ?
+        # casting is not necessary for neat (I think neat main graph it
+        # doesn't use numpy).
+
     @abstractmethod
     def action(self, observation: np.ndarray) -> np.ndarray:
         """Takes an observation from the environment as argument and returns
@@ -68,3 +66,4 @@ class BaseAgent(ABC):
     def reset(self) -> None:
         """Reset the agent to an initial state ``t==0``."""
         pass
+

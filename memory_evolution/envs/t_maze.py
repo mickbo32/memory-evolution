@@ -12,12 +12,12 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.random import SeedSequence, default_rng
-import pygame
+import pygame as pg
 from shapely.affinity import rotate, scale, translate
 from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiPolygon
 from shapely.ops import unary_union, triangulate
 
-from memory_evolution.utils import COLORS, is_color, is_simple_polygon, Pos, convert_image_to_pygame
+from memory_evolution.geometry import is_simple_polygon, Pos
 from memory_evolution.utils import MustOverride, override
 
 from .maze_foraging import MazeForagingEnv, Agent, FoodItem
@@ -26,20 +26,11 @@ from .maze_foraging import MazeForagingEnv, Agent, FoodItem
 class TMaze(MazeForagingEnv):
 
     def __init__(self,
-                 corridor_width: Real = .2,
-                 window_size: Union[int, Sequence[int]] = 640,  # (640, 480),
+                 corridor_width: Optional[Real] = .2,
+                 window_size: Union[int, Sequence[int]] = 320,
                  env_size: Union[float, Sequence[float]] = 1.,
-                 n_food_items: int = 3,
-                 rotation_step: float = 20,
-                 forward_step: float = .01,
-                 agent_size: float = .05,
-                 food_size: float = .05,
-                 vision_depth: float = .2,
-                 vision_field_angle: float = 180.,
-                 vision_resolution: int = 10,
-                 max_steps: Optional[int] = None,
-                 fps: Optional[int] = None,
-                 seed=None,
+                 *args,
+                 **kwargs
                  ) -> None:
 
         n_channels = 3
@@ -71,19 +62,15 @@ class TMaze(MazeForagingEnv):
             borders=borders,
             window_size=window_size,
             env_size=env_size,
-            n_food_items=n_food_items,
-            rotation_step=rotation_step,
-            forward_step=forward_step,
-            agent_size=agent_size,
-            food_size=food_size,
-            vision_depth=vision_depth,
-            vision_field_angle=vision_field_angle,
-            vision_resolution=vision_resolution,
-            max_steps=max_steps,
-            fps=fps,
-            seed=seed,
+            **kwargs
         )
+        self._update_init_params(['borders', 'window_size', 'env_size'])
 
         assert tuple(up_right) == self._env_size
         assert n_channels == self._n_channels, self._n_channels
+
+    @property
+    @override
+    def maximum_reward(self):
+        return super().maximum_reward
 
