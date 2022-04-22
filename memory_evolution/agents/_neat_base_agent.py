@@ -26,9 +26,10 @@ from shapely.affinity import rotate, scale, translate
 from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiPoint, MultiPolygon
 from shapely.ops import unary_union, triangulate
 
+import memory_evolution
 from memory_evolution.agents import BaseAgent
 from memory_evolution.agents.exceptions import EnvironmentNotSetError
-from memory_evolution.evaluate import evaluate_agent
+from memory_evolution.evaluate import evaluate_agent, FitnessRewardAndSteps
 from memory_evolution.utils import MustOverride, override
 from .exceptions import NotEvolvedError
 
@@ -167,6 +168,8 @@ class BaseNeatAgent(BaseAgent, ABC):
         assert self._phenotype is not None, (self._genome, self._phenotype)
         return NotImplemented
 
+    fitness_func = FitnessRewardAndSteps(1., 4., normalize_weights=False)  # todo: move in init
+
     # def get_eval_genome_func()
     # @classmethod
     def eval_genome(self, genome, config) -> float:
@@ -179,7 +182,10 @@ class BaseNeatAgent(BaseAgent, ABC):
         assert agent._genome is not None, agent
         assert agent._phenotype is not None, agent
         fitness = evaluate_agent(agent, self.get_env(),
-                                 episodes=2, render=self._render)
+                                 episodes=5,
+                                 episodes_aggr_func='median',
+                                 fitness_func=self.fitness_func,
+                                 render=self._render)
         return fitness
 
     @abstractmethod

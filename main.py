@@ -21,6 +21,7 @@ import pandas as pd
 
 from gym.utils.env_checker import check_env  # from stable_baselines.common.env_checker import check_env
 
+import memory_evolution
 from memory_evolution.agents import RandomActionAgent, RnnNeatAgent, CtrnnNeatAgent
 from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze, RadialArmMaze
 from memory_evolution.evaluate import evaluate_agent
@@ -109,7 +110,10 @@ if __name__ == '__main__':
     # env = TMaze(seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7, observation_noise=('normal', 0.0, 0.5))
     # env = TMaze(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
 
-    # env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.15, n_food_items=2, vision_depth=.25, vision_field_angle=135, max_steps=1000, vision_resolution=7)
+    env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.075, food_size=.05,
+                          n_food_items=2, max_steps=1000,
+                          # vision_depth=.25, vision_field_angle=135, vision_resolution=7)
+                          vision_depth=.5, vision_field_angle=210, vision_resolution=20)
 
     # env = RadialArmMaze(3, 1., window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
     # env = RadialArmMaze(9, window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
@@ -120,10 +124,10 @@ if __name__ == '__main__':
 
     # env = TMaze(seed=42, agent_size=.10, n_food_items=10, max_steps=500, vision_resolution=7)
 
-    env = RadialArmMaze(corridor_width=.2,
-                        window_size=200, seed=42, agent_size=.075, food_size=.05, n_food_items=1,
-                        init_agent_position=(.5, .1), init_food_positions=((.9, .5),),
-                        vision_depth=.2, vision_field_angle=135, max_steps=400, vision_resolution=8)
+    # env = RadialArmMaze(corridor_width=.2,
+    #                     window_size=200, seed=42, agent_size=.075, food_size=.05, n_food_items=1, max_steps=400,
+    #                     init_agent_position=(.5, .1), init_food_positions=((.9, .5),),
+    #                     vision_depth=.2, vision_field_angle=135, vision_resolution=8)
 
     print('observation_space:',
           env.observation_space.shape,

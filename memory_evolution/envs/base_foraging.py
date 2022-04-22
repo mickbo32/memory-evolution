@@ -558,7 +558,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._main_border = self._platform.boundary  # self._main_border_line v.s. self._main_border->.buffer(.05 * self._env_size[0], single_sided=True)
         self._fpsClock = pg.time.Clock()
         self.debug_info = defaultdict(dict)
-        self.time_step = 1
+        self.dt = 1
         self.t = None
 
         self._step_count = None
@@ -766,7 +766,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
             self.reset()
         if not self.action_space.contains(action):
             raise ValueError(f"'action' is not in action_space; action={action}, action_space={self.action_space}")  # if the values are correct, the error is probably due to different dtype
-        self.t += self.time_step
+        self.t += self.dt
 
         # update environment state:
         # compute reward:
@@ -805,6 +805,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                       return_info=return_info,
                       options=options)
         self._step_count = 0
+        self.__get_observation_points_cache = {}  # empty observation cache
         self.t = 0
         self._food_items_collected = 0
         if not self.__has_been_ever_reset:
@@ -1310,7 +1311,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 'observation_noise': self._observation_noise,
                 'fps': self._fps,
                 'seed': self._seed,
-                'time_step': self.time_step,
+                'dt': self.dt,
             },
             'env_img': self._env_img,  # memory_evolution.utils.convert_pg_surface_to_array(self._env_img), # converting is too expensive, don't do it
             'current_step': self._step_count,
