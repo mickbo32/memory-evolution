@@ -133,11 +133,8 @@ def evaluate_agent(agent,
         assert env.t == 0., env.t
         start_time_episode = time.perf_counter_ns()
         reset_actual_time = (start_time_episode - start_time_episode_including_reset) / 10 ** 9
-        msg = (
-            f"\n"
-            f"Episode reset took {reset_actual_time} actual seconds."
-        )
-        logging.log(logging.DEBUG + 5, '\n\t' + '\n\t'.join(msg.split('\n')))
+        msg = f"Episode reset took {reset_actual_time} actual seconds."
+        logging.log(logging.DEBUG + 5, '\n\t' + msg)
         # if render:
         #     print(msg, end='\n\n')
         total_reward = 0.0

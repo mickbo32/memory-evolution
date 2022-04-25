@@ -2,7 +2,8 @@
 
 [NEAT]
 fitness_criterion      = max
-fitness_threshold      = 4.5
+# fitness_criterion      = mean
+fitness_threshold      = 9
 no_fitness_termination = False
 pop_size               = 250
 reset_on_extinction    = False
@@ -10,12 +11,10 @@ reset_on_extinction    = False
 [DefaultGenome]
 # network parameters
 # --------------------------------------
-num_inputs              = 980
+num_inputs              = 84
 # agent_size,vision_depth,vision_field_angle,vision_resolution
-# .15   .25 135 7       = 91
-# .075  .2  135 8       = 104
-# .15   .5  210 20      = 1060
-# .075   .5  210 20     = 980
+# .075  .3  135 15      = 390
+# .075  .3  135 7       = 84
 # --------------------------------------
 num_hidden              = 0
 num_outputs             = 2

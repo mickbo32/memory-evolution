@@ -209,6 +209,9 @@ class CircleItem(pg.sprite.Sprite):
         self._self_repr_properties = [self.pos, self._size, self.color, self._env]
 
     # Since here items don't move, there is no need for overriding the update method.
+    # Actually Agent moves, but I update it directly by changing the pos value.
+    # (note: update() method is usually used for groups, so you can move all the objects
+    # in a group by calling group.update()).
     # def update(self, *args: Any, **kwargs: Any) -> None:
     #     """Override the base method."""
     #     '''
@@ -442,6 +445,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
                  observation_noise: Sequence[str, Real, Real] = None,
                  init_agent_position: Optional[Pos] = None,
                  init_food_positions: Optional[Sequence[Pos]] = None,
+                 agent_color: Sequence[int] = COLORS['red'],
+                 food_color: Sequence[int] = COLORS['black'],
+                 background_color: Sequence[int] = COLORS['white'],  # todo: do background with Texture (not actually needed)
+                 outside_color: Sequence = COLORS['black'],  # todo: do background with Texture (not actually needed)
                  max_steps: Optional[int] = None,
                  fps: Optional[int] = None,
                  seed=None,  # todo: int or SeedSequence
@@ -458,6 +465,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
             n_food_items: number of food items.
             rotation_step: amount of maximum rotation per tick.
             forward_step: amount of maximum forward motion per tick.
+                You can also think at the (forward_step, rotation_step) as a vector (magnitude, angle)
+                of movement in 2D space for each tick/step.
             agent_size: agent diameter.
             food_size: food item diameter.
             vision_depth: depth of the sight of the agent, each straight line of vision
@@ -485,6 +494,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
             init_food_positions: if provided should be a list of ``n_food_items`` valid
                     food item positions (in the environment space). If ``None``,
                     ``n_food_items`` food items are spawned in random positions.
+            agent_color: RGB Sequence of 3 integers in range [0, 255]
+            food_color: RGB Sequence of 3 integers in range [0, 255]
+            background_color: RGB Sequence of 3 integers in range [0, 255]
+            outside_color: RGB Sequence of 3 integers in range [0, 255]
             max_steps: after this number of steps the environment is done, even if no all
                     food items are collected(the ``max_steps``_th step it will return
                     done True); if ``None`` continue forever (done always False).
@@ -527,8 +540,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._vision_depth = vision_depth
         self._vision_field_angle = vision_field_angle
         self._vision_resolution = vision_resolution
-        self._vision_start = self._agent_size / 2 - self._food_size / 2
-        self._vision_start = min(self._vision_depth, max(0., self._vision_start))
+        # # self._vision_start = 0.
+        # self._vision_start = self._agent_size / 2 - self._food_size / 2
+        # self._vision_start = min(self._vision_depth, max(0., self._vision_start))
+        self._vision_start = self._agent_size / 2
         vision_step = (self._vision_depth - self._vision_start) / self._vision_resolution
         reference_depth = .66
         distance_points_at_same_depth = vision_step
@@ -542,10 +557,24 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._seed = seed
         self._seedsequence = SeedSequence(self._seed)
 
-        self.agent_color = COLORS['red']
-        self.food_color = COLORS['gray']
-        self.background_color = COLORS['white']  # todo: do it with Texture
-        self.outside_color = COLORS['black']
+        # static inertia in movement:
+        # static friction when starting moving from still position
+        # (no protected variable needed, you should be able to change it at runtime without any problem)
+        self.inertia = .02
+
+        # colors:
+        if not is_color(agent_color):
+            raise ValueError("'agent_color' is not a color")
+        if not is_color(food_color):
+            raise ValueError("'food_color' is not a color")
+        if not is_color(background_color):
+            raise ValueError("'background_color' is not a color")
+        if not is_color(outside_color):
+            raise ValueError("'outside_color' is not a color")
+        self._agent_color = agent_color
+        self._food_color = food_color
+        self._background_color = background_color
+        self._outside_color = outside_color
 
         self._vision_point_win_radius = max(self._env2win_resize_factor * min(self._env_size) * .005, 1)
         self._vision_point_transparency = self.__get_vision_point_transparency(
@@ -612,7 +641,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
             observation_noise = get_observation_noise
         self._observation_noise = observation_noise
 
-        bgd_col = self.background_color
+        bgd_col = self._background_color
         assert is_color(bgd_col), bgd_col
         self._soil = np.ones(self.env_space.shape, dtype=self.env_space.dtype) * bgd_col
         assert self.env_space.contains(self._soil)  # note: this check also dtype
@@ -745,6 +774,22 @@ class BaseForagingEnv(gym.Env, MustOverride):
     @override
     def maximum_reward(self):
         return self._n_food_items
+
+    @property
+    def agent_color(self):
+        return self._agent_color
+
+    @property
+    def food_color(self):
+        return self._food_color
+
+    @property
+    def background_color(self):
+        return self._background_color
+
+    @property
+    def outside_color(self):
+        return self._outside_color
 
     @staticmethod
     def __get_vision_point_transparency(point_win_radius, vision_win_step):
@@ -901,8 +946,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
             if match:
                 os.makedirs(match.group(1), exist_ok=False)
 
-        self._screen.blit(self._background_img, (0, 0))  # todo: update instead of rewriting each time
-        self._draw_env(self._screen)
+        self._render_env(self._screen)
 
         # flip/update the screen:
         if mode == 'human' or re.search(r'^(?:.*\+)?human(?:\+.*)?$', mode):
@@ -989,21 +1033,43 @@ class BaseForagingEnv(gym.Env, MustOverride):
         return get_point_win2env(point, self._window_size, self._env_size)
 
     @override
-    def _draw_env(self, screen) -> None:
-        """Draw the environment in the screen.
+    def _update_env_img(self) -> None:
+        """Update (draw) the environment in the self._env_img
+
+        This method implementation just adds background and food items
+        (agent is drawn only in rendering to avoid observation to see itself).
+        Override it for more complex behaviour.
 
         Note: to override the background update the attribute
-        ``self._background_img`` (pygame surface) in self.__init__()
+        ``self._background_img`` (pygame surface) in subclass __init__()
         """
+        # draw background:    # todo: update instead of rewriting each time
+        self._env_img.blit(self._background_img, (0, 0))
 
         # draw food items:
-        self._food_items_group.draw(screen)
+        self._food_items_group.draw(self._env_img)
+
+        # draw agent:
+        # agent is drawn later than food items, so that it is shown on top.
+        # self._agent_group.draw(self._env_img)  # this is done only in rendering, otherwise the observation sees itself
+
+    @override
+    def _render_env(self, screen) -> None:
+        """Draw the environment in the screen for rendering.
+
+        Note: to override the background update the attribute
+        ``self._background_img`` (pygame surface) in subclass __init__()
+        """
+
+        # blit env img:  # todo: update instead of rewriting each time
+        screen.blit(self._env_img, (0, 0))
 
         # draw agent:
         # agent is drawn later than food items, so that it is shown on top.
         self._agent_group.draw(screen)
 
         # draw field of view of the agent:
+        # field of view is drawn later than the agent, so that it is shown on top.
         r = self._vision_point_win_radius
         for pt in self._get_observation_points().reshape((-1, 2)):
             if 0 <= pt[0] <= self._env_size[0] and 0 <= pt[1] <= self._env_size[1]:
@@ -1057,7 +1123,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         hd = self.env_space.np_random.rand() * 360
         if self._agent is not None:
             self._agent.kill()
-        self._agent = Agent(pos, self._agent_size, head_direction=hd, color=self.agent_color, env=self)
+        self._agent = Agent(pos, self._agent_size, head_direction=hd, color=self._agent_color, env=self)
         # print(self._agent_size, self._agent.radius, str(self._agent.pos))
         self._agent_group.empty()  # remove all previous food item sprites from the group
         self._agent_group.add(self._agent)
@@ -1067,7 +1133,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         while positions:
             pos = positions.pop()
             assert self.is_valid_position(pos, 'food'), (pos, self._food_size / 2)
-            self._food_items.append(FoodItem(pos, self._food_size, self.food_color, env=self))
+            self._food_items.append(FoodItem(pos, self._food_size, self._food_color, env=self))
         assert isinstance(self._food_items[0], pg.sprite.Sprite)
         self._food_items_group.empty()  # remove all previous food item sprites from the group
         self._food_items_group.add(*self._food_items)
@@ -1083,6 +1149,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # #                             env=self)
         # #                  for _ in range(reduce(mul, self.observation_space.shape, 1))]
         # # self._vision_points_group.add(*vision_points)
+
+        # update _env_img: -> pos: & rotate:
+        self._update_env_img()
 
         # self.debug_info['_init_state']
 
@@ -1103,14 +1172,18 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # >> rotate:
         rotation_step = self._rotation_step * (action[0] * 2 - 1.)
         assert -1. * self._rotation_step <= rotation_step <= 1. * self._rotation_step, rotation_step
-        # add initial rotation inertia
-        if abs(rotation_step) < self._rotation_step * .02:
+        # adjust for static rotation inertia
+        if abs(rotation_step) < self._rotation_step * self.inertia:
             logging.debug('rotation inertia hit')
-            rotation_step = 0.
+            rotation_step = 0.0
         self._agent.head_direction = (self._agent.head_direction
                                       + rotation_step) % 360
         # >> go forward:
+        # adjust for static forward inertia
         forward_step = self._forward_step * action[1]
+        if abs(forward_step) < self._forward_step * self.inertia:
+            logging.debug('forward inertia hit')
+            forward_step = 0.0
         assert 0. <= forward_step, forward_step
         assert 0. <= forward_step <= 1. * self._forward_step, forward_step
         # Try first if pos is it valid,
@@ -1175,7 +1248,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
         assert food_collected >= 0, food_collected
 
         # update _env_img: -> pos: & rotate:
-        # todo
+        # since, food items are not moving, env is updated only in _init_state() and when collecting food
+        if food_collected:
+            self._update_env_img()
 
         # compute reward:
         reward = food_collected
@@ -1257,7 +1332,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
     def _get_point_color(self, point):
         """Returns the color in the env_img in correspondence of ``point``
         (``point`` in the env space)."""
-        col = self.outside_color
+        col = self._outside_color
         if 0 <= point[0] <= self._env_size[0] and 0 <= point[1] <= self._env_size[1]:
             col = self._env_img.get_at(
                 get_point_env2win(point, self._window_size, self._env_size)
@@ -1313,6 +1388,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 'seed': self._seed,
                 'dt': self.dt,
             },
+            'background_img': self._background_img,
             'env_img': self._env_img,  # memory_evolution.utils.convert_pg_surface_to_array(self._env_img), # converting is too expensive, don't do it
             'current_step': self._step_count,
             't': self.t,

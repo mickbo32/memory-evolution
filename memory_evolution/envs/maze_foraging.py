@@ -55,7 +55,7 @@ class MazeForagingEnv(BaseForagingEnv):
         self._platform = platform
 
         # update background np.ndarray and background_img pygame image
-        border_color = self.outside_color
+        border_color = self._outside_color
         background = self._soil.copy()
         borders_mask = get_valid_item_positions_mask(self._platform, 0., self.window_size, self.env_size)
         background = convert_image_to_pygame(background)
@@ -63,6 +63,7 @@ class MazeForagingEnv(BaseForagingEnv):
         self._background_img = borders_mask.to_surface(
             background,
             setsurface=background,
+            setcolor=self._background_color,
             unsetcolor=border_color
         )
 
@@ -110,14 +111,11 @@ class MazeForagingEnv(BaseForagingEnv):
 
         return platform
 
-    def _draw_env(self, screen) -> None:
-        # draw stuff:
-        # pass
+    def _update_env_img(self) -> None:
+        super()._update_env_img()
 
-        # draw agent and food items later, so you can see them above borders
-        # if for some reasons they are plotted outside the maze, but mainly you can see
-        # vision points above borders
-        super()._draw_env(screen)
+    def _render_env(self, screen) -> None:
+        super()._render_env(screen)
 
     def _init_state(self) -> None:
         super()._init_state()

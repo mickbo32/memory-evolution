@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict, Counter
 from collections.abc import Iterable, Sequence
 from functools import reduce
+import inspect
 import math
 import multiprocessing
 from numbers import Number, Real
@@ -168,7 +169,13 @@ class BaseNeatAgent(BaseAgent, ABC):
         assert self._phenotype is not None, (self._genome, self._phenotype)
         return NotImplemented
 
-    fitness_func = FitnessRewardAndSteps(1., 4., normalize_weights=False)  # todo: move in init
+    # fitness_func is class attribute, because all agents of the same
+    # type (or in same population) should be evaluated in the same way
+    # (so that the fitnesses of two agents can be compared).
+    fitness_func: inspect.signature(evaluate_agent).parameters['fitness_func'].annotation = FitnessRewardAndSteps(4., 6., normalize_weights=False)
+    eval_num_episodes: inspect.signature(evaluate_agent).parameters['episodes'].annotation = 5
+    eval_episodes_aggr_func: inspect.signature(evaluate_agent).parameters['episodes_aggr_func'].annotation = 'median'
+    # You can access the dict of annotations with: print(type(self).__annotations__)
 
     # def get_eval_genome_func()
     # @classmethod
@@ -182,8 +189,8 @@ class BaseNeatAgent(BaseAgent, ABC):
         assert agent._genome is not None, agent
         assert agent._phenotype is not None, agent
         fitness = evaluate_agent(agent, self.get_env(),
-                                 episodes=5,
-                                 episodes_aggr_func='median',
+                                 episodes=self.eval_num_episodes,
+                                 episodes_aggr_func=self.eval_episodes_aggr_func,
                                  fitness_func=self.fitness_func,
                                  render=self._render)
         return fitness

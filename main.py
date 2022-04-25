@@ -16,6 +16,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import neat
 import numpy as np
+import pygame as pg
 from numpy.random import SeedSequence
 import pandas as pd
 
@@ -25,7 +26,7 @@ import memory_evolution
 from memory_evolution.agents import RandomActionAgent, RnnNeatAgent, CtrnnNeatAgent
 from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze, RadialArmMaze
 from memory_evolution.evaluate import evaluate_agent
-from memory_evolution.utils import set_main_logger
+from memory_evolution.utils import set_main_logger, COLORS
 
 # matplotlib settings:
 isRunningInPyCharm = "PYCHARM_HOSTED" in os.environ
@@ -73,6 +74,7 @@ if __name__ == '__main__':
     # logging settings:
     logging_dir, UTCNOW = set_main_logger(file_handler_all=None,
                                           stdout_handler=logging.INFO,
+                                          file_handler_now=logging.DEBUG + 1,
                                           file_handler_now_filename_fmt="log_" + JOB_ID + "_{utcnow}.log")
     logging.info(__file__)
 
@@ -110,10 +112,31 @@ if __name__ == '__main__':
     # env = TMaze(seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7, observation_noise=('normal', 0.0, 0.5))
     # env = TMaze(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
 
-    env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.075, food_size=.05,
-                          n_food_items=2, max_steps=1000,
-                          # vision_depth=.25, vision_field_angle=135, vision_resolution=7)
-                          vision_depth=.5, vision_field_angle=210, vision_resolution=20)
+    # env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.15, food_size=.05,
+    #                       n_food_items=2, max_steps=1000,
+    #                       vision_depth=.25, vision_field_angle=135, vision_resolution=7)
+    # env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.075, food_size=.05,
+    #                       n_food_items=2, max_steps=1000,
+    #                       # vision_depth=.25, vision_field_angle=135, vision_resolution=7)
+    #                       vision_depth=.5, vision_field_angle=210, vision_resolution=20)
+    # env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.075, food_size=.05,
+    #                       n_food_items=2, max_steps=500,
+    #                       vision_depth=.3, vision_field_angle=135, vision_resolution=8)
+    # env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.075, food_size=.05,
+    #                       n_food_items=10, max_steps=500,
+    #                       rotation_step=5.,
+    #                       vision_depth=.3, vision_field_angle=135, vision_resolution=16,
+    #                       # food_color=COLORS['black'], outside_color=COLORS['gray'], background_color=COLORS['white'],
+    #                       food_color=COLORS['white'], outside_color=COLORS['gray'], background_color=COLORS['black'],
+    #                       )
+    env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.075, food_size=.0375,
+                          n_food_items=10, max_steps=1000,
+                          rotation_step=10., forward_step=.01,
+                          # vision_depth=.3, vision_field_angle=135, vision_resolution=15,
+                          vision_depth=.3, vision_field_angle=135, vision_resolution=7,
+                          # food_color=COLORS['black'], outside_color=COLORS['gray'], background_color=COLORS['white'],
+                          food_color=COLORS['white'], outside_color=COLORS['gray'], background_color=COLORS['black'],
+                          )
 
     # env = RadialArmMaze(3, 1., window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
     # env = RadialArmMaze(9, window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
@@ -129,9 +152,10 @@ if __name__ == '__main__':
     #                     init_agent_position=(.5, .1), init_food_positions=((.9, .5),),
     #                     vision_depth=.2, vision_field_angle=135, vision_resolution=8)
 
-    print('observation_space:',
-          env.observation_space.shape,
-          np.asarray(env.observation_space.shape).prod())
+    logging.info(f"Env: {type(env).__qualname__}")
+    logging.info(f"observation_space: "
+                 f"{env.observation_space.shape} "
+                 f"{np.asarray(env.observation_space.shape).prod()}")
     # picKle env:
     with open(os.path.join(logging_dir, LOG_TAG + '_env.pickle'), "wb") as f:
         pickle.dump(env, f)
@@ -139,7 +163,19 @@ if __name__ == '__main__':
     with open(os.path.join(logging_dir, LOG_TAG + '_env.pickle'), "rb") as f:
         _loaded_env = pickle.load(f)
         assert type(_loaded_env) is type(env)
-        assert _loaded_env._init_params == env._init_params
+        # assert _loaded_env._init_params == env._init_params
+        assert _loaded_env._init_params.arguments.keys() == env._init_params.arguments.keys()
+        for k, v in _loaded_env._init_params.arguments.items():
+            if isinstance(v, np.ndarray):
+                np.array_equal(env._init_params.arguments[k], v)
+            elif isinstance(v, dict):
+                for k_, v_ in v.items():
+                    if isinstance(v_, np.ndarray):
+                        np.array_equal(env._init_params.arguments[k][k_], v_)
+                    else:
+                        assert env._init_params.arguments[k][k_] == v_
+            else:
+                assert env._init_params.arguments[k] == v
     # check env:
     check_env(env)  # todo: move in tests
     print('Env checked.')
@@ -161,10 +197,37 @@ if __name__ == '__main__':
     # logging: save current config file for later use:
     shutil.copyfile(config_path, os.path.join(logging_dir, LOG_TAG + '_config'))
 
+    # select Phenotype:
     Phenotype = RnnNeatAgent
+
+    # set Phenotype attributes (overwrite default values, e.g. fitness and evaluate_agent params):
+    # Phenotype.fitness_func = memory_evolution.evaluate.FitnessRewardAndSteps(1., 4., normalize_weights=False)
+    # Phenotype.eval_num_episodes = 2
+    # Phenotype.eval_episodes_aggr_func = 'min'
+    # Phenotype.fitness_func = memory_evolution.evaluate.FitnessRewardAndSteps(1., 4., normalize_weights=False)
+    # Phenotype.eval_num_episodes = 5
+    # Phenotype.eval_episodes_aggr_func = 'median'
+    # Phenotype.fitness_func = memory_evolution.evaluate.FitnessRewardAndSteps(4., 6., normalize_weights=False)
+    # Phenotype.eval_num_episodes = 10
+    # Phenotype.eval_episodes_aggr_func = 'min'
+    # Phenotype.fitness_func = memory_evolution.evaluate.FitnessRewardAndSteps(4., 6., normalize_weights=False)
+    # Phenotype.eval_num_episodes = 10
+    # Phenotype.eval_episodes_aggr_func = 'median'
+    Phenotype.fitness_func = memory_evolution.evaluate.FitnessRewardAndSteps(4., 6., normalize_weights=False)
+    Phenotype.eval_num_episodes = 5
+    Phenotype.eval_episodes_aggr_func = 'median'
+
+    # dump Phenotype for later use:
     with open(os.path.join(logging_dir, LOG_TAG + '_phenotype.pickle'), "wb") as f:
         pickle.dump(Phenotype, f)
+    # construct agent:
     agent = Phenotype(config_path)
+
+    logging.info(f"Phenotype: {Phenotype.__qualname__}")
+    logging.info(f"Phenotype.fitness_func: {Phenotype.fitness_func}")
+    logging.info(f"Phenotype.eval_num_episodes: {Phenotype.eval_num_episodes}")
+    logging.info(f"Phenotype.eval_episodes_aggr_func: {Phenotype.eval_episodes_aggr_func}")
+    print()
 
     # ----- MAIN LOOP -----
     # Evolve, interact, repeat.
@@ -175,15 +238,15 @@ if __name__ == '__main__':
         # note2: if you render all and if you minimize the window or you put it in a part of the screen not visible
         #        the algorithm will go way faster, so you can make it faster and debugging
         #        at your choice by knowing this.
-        render, parallel, render_best = True, False, True      # local execution, render all
-        # render, parallel, render_best = False, True, True     # local execution, show best
+        # render, parallel, render_best = True, False, True      # local execution, render all
+        render, parallel, render_best = False, True, True     # local execution, show best
     else:  # remote execution
         render, parallel, render_best = False, True, False    # remote execution, just save gifs
 
     # evaluate_agent(RandomActionAgent(env), env, episodes=2, render=True)
 
-    checkpointer = neat.Checkpointer(generation_interval=100,
-                                     time_interval_seconds=300,
+    checkpointer = neat.Checkpointer(generation_interval=200,
+                                     time_interval_seconds=600,
                                      filename_prefix=os.path.join(
                                          logging_dir,
                                          LOG_TAG + '_neat-checkpoint-'))
