@@ -5,6 +5,8 @@ from typing import Literal, Optional
 from collections.abc import Sequence
 import warnings
 
+import neat
+
 try:
     import graphviz
 except ModuleNotFoundError as err:
@@ -212,6 +214,7 @@ def draw_net(config, genome, view=False, filename=None, node_names=None, show_di
     dot = graphviz.Digraph(format=format, node_attr=default_node_attrs,
                            **graph_kwargs)
     dot.graph_attr['rankdir'] = rankdir
+    # dot.graph_attr['style'] = 'dotted'  # apply this attr to all subgraph which as a name starting with 'cluster_'
 
     # with dot.subgraph(name='inputs') as dot_inputs:
     # dot_inputs.attr(rank='min')
@@ -310,6 +313,7 @@ def draw_net(config, genome, view=False, filename=None, node_names=None, show_di
 
     if order_inputs or order_outputs:
         with dot.subgraph(name='hidden') as dot_hidden:
+            # dot_hidden.attr(style='dotted')  # label='hidden'
             for k in genome.nodes:
                 if k not in outputs:
                     if not prune_unused or k in used_nodes:

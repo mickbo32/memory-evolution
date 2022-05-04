@@ -166,5 +166,6 @@ if __name__ == '__main__':
     agent.visualize_genome(agent.genome, view=True, name='Genome',
                            default_input_node_color='palette',
                            filename=os.path.join(LOGGING_DIR, LOADED_UTCNOW + "_genome.gv"),
-                           format='svg')
+                           format='svg',
+                           show_palette=True)
 

@@ -262,6 +262,7 @@ class BaseNeatAgent(BaseAgent, ABC):
                          show_disabled=True, prune_unused=False,
                          node_colors=None, format='sgv',
                          default_input_node_color: Literal['palette', 'default'] = 'default',  # default: 'lightgray'
+                         show_palette=True,
                          ):  # 'format' abbreviation: fmt
         """Display the genome."""
         print('\n{!s}:\n{!s}'.format(name, genome))
@@ -296,11 +297,12 @@ class BaseNeatAgent(BaseAgent, ABC):
                     k += 1
             assert k == len(input_nodes)
             assert obs_size == len(input_nodes) == len(_input_node_colors)
-            plt.matshow(palette)
-            inputs_palette_filename = ('' if filename is None else filename) + "_inputs_palette.png"
-            plt.savefig(inputs_palette_filename)
-            if view:
-                plt.show()
+            if show_palette:
+                plt.matshow(palette)
+                inputs_palette_filename = ('' if filename is None else filename) + "_inputs_palette.png"
+                plt.savefig(inputs_palette_filename)
+                if view:
+                    plt.show()
             # if node_colors are provided the default _input_node_colors value is overwritten if present:
             if node_colors is not None:
                 node_colors = _input_node_colors | node_colors
@@ -308,8 +310,7 @@ class BaseNeatAgent(BaseAgent, ABC):
                 node_colors = _input_node_colors
             # node_positions = _input_node_positions
 
-            '''
-            # compute node_positions for other nodes:
+            # compute node ranks:
             output_nodes = self.config.genome_config.output_keys
             _output_nodes_set = set(output_nodes)
             hidden_nodes = [n.key for n in self.genome.nodes.values() if n.key not in _output_nodes_set]
@@ -340,23 +341,14 @@ class BaseNeatAgent(BaseAgent, ABC):
                     starting_nodes.remove(out_node)
             node_rank = bfs(graph, starting_nodes)
             max_rank = max(node_rank.values())
-            rank_scale = 2
-            offset = 5
-            height = n_rows * .7
-            hidden_ranks = defaultdict(list)
+            assert min(node_rank.values()) == 0
+            rank_hidden = defaultdict(list)
             for h in hidden_nodes:
-                hidden_ranks[node_rank[h]].append(h)
-            max_hidden_rank = max(hidden_ranks)
-            for i, node in enumerate(hidden_ranks[0]):
-                node_positions[node] = (0, + (i + 1) * 1 + .1)
-            for rank in range(1, max_hidden_rank):
-                scale = height / (len(hidden_ranks[rank]) + 1)
-                for i, node in enumerate(hidden_ranks[rank]):
-                    node_positions[node] = (rank * rank_scale + offset, - (i + 1) * scale + .5)
-            out_scale = height / (len(output_nodes) + 1)
-            for i, node in enumerate(output_nodes):
-                node_positions[node] = (max(max_rank, max_hidden_rank + 1) * rank_scale + offset, - (i + 1) * out_scale + .5)
-            '''
+                rank_hidden[node_rank[h]].append(h)
+            max_hidden_rank = max(rank_hidden)
+            # # outputs are placed all in the max rank (they are also in the correct order):
+            # for o in output_nodes:
+            #     rank_hidden[max_rank].append(o)
 
         node_names = self.node_names
         dot = visualize.draw_net(
@@ -375,44 +367,143 @@ class BaseNeatAgent(BaseAgent, ABC):
             render=False,
         )
 
-        '''
         if default_input_node_color == 'palette':
+            dot.graph_attr['compound'] = 'true'
+
             # order by adding invisible edges:
+            # inputs:
             for k, k2 in zip(self.config.genome_config.input_keys[:-1], self.config.genome_config.input_keys[1:]):
-                in_name = node_names.get(k, str(k))
-                in2_name = node_names.get(k2, str(k2))
-                dot.edge(in_name, in2_name, _attributes={'style': 'invis'})
+                name1 = node_names.get(k, str(k))
+                name2 = node_names.get(k2, str(k2))
+                dot.edge(name1, name2, _attributes={'style': 'invis'})
+            # outputs:
+            for k, k2 in zip(self.config.genome_config.output_keys[:-1], self.config.genome_config.output_keys[1:]):
+                name1 = node_names.get(k, str(k))
+                name2 = node_names.get(k2, str(k2))
+                dot.edge(name1, name2, _attributes={'style': 'invis'})
 
             # put the inputs in column clusters and row groups:
             with dot.subgraph(name='cluster_inputs') as dot_inputs:
-                #dot_inputs.graph_attr['compound'] = 'true'
+                dot_inputs.attr(style='dotted')
                 for col in indexes.T:
                     with dot_inputs.subgraph() as dot_sub_inputs:
                         dot_sub_inputs.attr(rank='same')
-                        inputs = set()
                         for i, k in enumerate(col):
                             k = input_nodes[k]
-                            inputs.add(k)
                             name = node_names.get(k, str(k))
-                            dot_sub_inputs.node(name, _attributes={'group': str(i)})
+                            dot_sub_inputs.node(name, _attributes={'group': 'input_group_' + str(i)})
 
-            # connect the last input to all the other nodes connected to input
-            # with invisible edges to make them be presented later:
+            # put hidden and output in culsters:
+            with dot.subgraph(name='cluster_outputs') as dot_outputs:
+                dot_outputs.attr(rank='same', style='invis')
+                for k in output_nodes:
+                    name = node_names.get(k, str(k))
+                    dot_outputs.node(name)
+            with dot.subgraph(name='cluster_hidden') as dot_hidden:
+                dot_hidden.attr(style='invis')
+                # note: you should do subgraph for rank if you really want to enforce it also for all hidden nodes
+                for k in self.genome.nodes:
+                    if k not in output_nodes:
+                        # this will show also pruned nodes (minor issue because I don't prune any node)
+                        name = node_names.get(k, str(k))
+                        dot_hidden.node(name)
 
-            input_nodes_set = set(input_nodes)
-            for cg in self.genome.connections.values():
-                i, o = cg.key
-                if i in input_nodes_set:
-                    in_name = node_names.get(i, str(i))
-                    out_name = node_names.get(o, str(o))
-                    dot.edge(in_name, out_name, _attributes={'style': 'invis'})
 
-            last_in = input_nodes[-1]
-            crossing_hidden = self.config.genome_config.output_keys[0]
-            in_name = node_names.get(last_in, str(last_in))
-            out_name = node_names.get(crossing_hidden, str(crossing_hidden))
-            dot.edge(in_name, out_name, _attributes={'style': 'invis', 'lhead': 'hidden'})
-            '''
+            # use the ranks computed before to create invisible links:
+            _rank_style = 'invis'  # 'dotted'  # 'invis'  # 'dotted'
+            dot.node('rank_i', _attributes={'style': _rank_style, 'group': 'rank'})
+            if hidden_nodes:
+                dot.node('rank_0', _attributes={'style': _rank_style, 'group': 'rank'})
+                dot.edge('rank_i', 'rank_0', _attributes={'style': _rank_style})
+                for rank in range(1, max_hidden_rank + 1):
+                    dot.node('rank_' + str(rank), _attributes={'style': _rank_style, 'group': 'rank'})
+                    dot.edge('rank_' + str(rank - 1), 'rank_' + str(rank), _attributes={'style': _rank_style})
+                dot.node('rank_o', _attributes={'style': _rank_style, 'group': 'rank'})
+                assert rank == max_hidden_rank, (rank, max_hidden_rank)
+                dot.edge('rank_' + str(rank), 'rank_o', _attributes={'style': _rank_style})
+            else:
+                dot.node('rank_o', _attributes={'style': _rank_style, 'group': 'rank'})
+                dot.edge('rank_i', 'rank_o', _attributes={'style': _rank_style})
+            # inputs:
+            k = input_nodes[-1]
+            name = node_names.get(k, str(k))
+            dot.edge('rank_i', name, _attributes={'style': _rank_style, 'lhead': 'cluster_inputs'})
+            # hidden:
+            if 0 in rank_hidden:
+                rank = 0
+                k = rank_hidden[rank][0]
+                name = node_names.get(k, str(k))
+                dot.edge('rank_' + str(rank), name, _attributes={'style': _rank_style, 'lhead': 'cluster_hidden'})
+            for rank in range(1, max_hidden_rank + 1):
+                k = rank_hidden[rank][0]
+                name = node_names.get(k, str(k))
+                dot.edge('rank_' + str(rank), name, _attributes={'style': _rank_style, 'lhead': 'cluster_hidden'})
+            # outputs:
+            k = output_nodes[-1]
+            name = node_names.get(k, str(k))
+            dot.edge('rank_o', name, _attributes={'style': _rank_style, 'lhead': 'cluster_outputs'})
+
+
+
+            # dot.node('rank_0', _attributes={'style': 'dotted', 'group': 'rank'})
+            # for rank in range(1, max_rank + 1):
+            #     dot.node('rank_' + str(rank), _attributes={'style': 'dotted', 'group': 'rank'})
+            #     dot.edge('rank_' + str(rank - 1), 'rank_' + str(rank), _attributes={'style': 'dotted'})
+            # for k in input_nodes:
+            #     name = node_names.get(k, str(k))
+            #     dot.edge('rank_0', name, _attributes={'style': 'dotted'})
+            # if 0 in rank_hidden_output:
+            #     rank = 0
+            #     for k in rank_hidden_output[rank]:
+            #         name = node_names.get(k, str(k))
+            #         dot.edge('rank_' + str(rank), name, _attributes={'style': 'dotted'})
+            # for rank in range(1, max_rank + 1):
+            #     for k in rank_hidden_output[rank]:
+            #         name = node_names.get(k, str(k))
+            #         dot.edge('rank_' + str(rank), name, _attributes={'style': 'dotted'})
+
+            # k = input_nodes[-1]
+            # name = node_names.get(k, str(k))
+            # dot.edge('rank_0', name, _attributes={'style': 'dotted'})
+            # if 0 in rank_hidden_output:
+            #     rank = 0
+            #     nodes = rank_hidden_output[rank]
+            #     k = nodes[0]
+            #     name = node_names.get(k, str(k))
+            #     dot.edge('rank_' + str(rank), name, _attributes={'style': 'dotted'})
+            # for rank in range(1, max_rank + 1):
+            #     nodes = rank_hidden_output[rank]
+            #     k = nodes[0]
+            #     name = node_names.get(k, str(k))
+            #     dot.edge('rank_' + str(rank), name, _attributes={'style': 'dotted'})
+
+            # # connect the last input to all the other nodes connected to input
+            # # with invisible edges to make them be presented later:
+            #
+            # input_nodes_set = set(input_nodes)
+            # for cg in self.genome.connections.values():
+            #     i, o = cg.key
+            #     if i in input_nodes_set:
+            #         in_name = node_names.get(i, str(i))
+            #         out_name = node_names.get(o, str(o))
+            #         dot.edge(in_name, out_name, _attributes={'style': 'invis'})
+            #
+            # last_in = input_nodes[-1]
+            # crossing_hidden = self.config.genome_config.output_keys[0]
+            # in_name = node_names.get(last_in, str(last_in))
+            # out_name = node_names.get(crossing_hidden, str(crossing_hidden))
+            # dot.edge(in_name, out_name, _attributes={'style': 'invis', 'lhead': 'hidden'})
+            #
+            #
+            # for i, node in enumerate(rank_hidden[0]):
+            #     node_positions[node] = (0, + (i + 1) * 1 + .1)
+            # for rank in range(1, max_hidden_rank):
+            #     scale = height / (len(rank_hidden[rank]) + 1)
+            #     for i, node in enumerate(rank_hidden[rank]):
+            #         node_positions[node] = (rank * rank_scale + offset, - (i + 1) * scale + .5)
+            # out_scale = height / (len(output_nodes) + 1)
+            # for i, node in enumerate(output_nodes):
+            #     node_positions[node] = (max(max_rank, max_hidden_rank + 1) * rank_scale + offset, - (i + 1) * out_scale + .5)
 
         dot.render(filename, view=view)
         print(dot.source)
