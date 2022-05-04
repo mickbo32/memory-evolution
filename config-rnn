@@ -16,10 +16,13 @@ num_inputs              = 84
 # .075  .3  135 15      = 390
 # .075  .3  135 7       = 84
 # --------------------------------------
-num_hidden              = 0
+# num_hidden              = 0
+num_hidden              = 10
 num_outputs             = 2
 feed_forward            = False
-initial_connection      = partial_direct 0.5
+# initial_connection      = partial_direct 0.5
+# initial_connection      = full_nodirect
+initial_connection      = full_direct
 
 # node activation options
 activation_default      = sigmoid

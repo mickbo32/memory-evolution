@@ -431,6 +431,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
         kwargs = self._init_params.kwargs
         return _constructor, (type(self), args, kwargs)
 
+    action_space: spaces.Box
+    observation_space: spaces.Box
+
     def __init__(self,
                  window_size: Union[int, Sequence[int]] = 320,  # (640, 480),
                  env_size: Union[float, Sequence[float]] = 1.,
@@ -446,12 +449,13 @@ class BaseForagingEnv(gym.Env, MustOverride):
                  init_agent_position: Optional[Pos] = None,
                  init_food_positions: Optional[Sequence[Pos]] = None,
                  agent_color: Sequence[int] = COLORS['red'],
-                 food_color: Sequence[int] = COLORS['black'],
-                 background_color: Sequence[int] = COLORS['white'],  # todo: do background with Texture (not actually needed)
-                 outside_color: Sequence = COLORS['black'],  # todo: do background with Texture (not actually needed)
+                 food_color: Sequence[int] = COLORS['white'],
+                 background_color: Sequence[int] = COLORS['black'],  # todo: do background with Texture (not actually needed)
+                 outside_color: Sequence = COLORS['gray'],  # todo: do background with Texture (not actually needed)
+                 inverted_color_rendering: bool = True,
                  max_steps: Optional[int] = None,
                  fps: Optional[int] = None,
-                 seed=None,  # todo: int or SeedSequence
+                 seed=None,
                  ) -> None:
         """Inits environment
 
@@ -496,13 +500,14 @@ class BaseForagingEnv(gym.Env, MustOverride):
                     ``n_food_items`` food items are spawned in random positions.
             agent_color: RGB Sequence of 3 integers in range [0, 255]
             food_color: RGB Sequence of 3 integers in range [0, 255]
+            inverted_color_rendering: invert colors when rendering the environment.
             background_color: RGB Sequence of 3 integers in range [0, 255]
             outside_color: RGB Sequence of 3 integers in range [0, 255]
             max_steps: after this number of steps the environment is done, even if no all
                     food items are collected(the ``max_steps``_th step it will return
                     done True); if ``None`` continue forever (done always False).
             fps: frames per second, if it is None it does the rendering as fast as possible.
-            seed: seed for random generators.
+            seed: seed for random generator.
         """
         super().__init__()
 
@@ -556,6 +561,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._fps = 0 if fps is None else fps
         self._seed = seed
         self._seedsequence = SeedSequence(self._seed)
+        self._inverted_color_rendering = inverted_color_rendering
 
         # static inertia in movement:
         # static friction when starting moving from still position
@@ -599,13 +605,11 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self.__get_observation_points_cache = {}
         self._food_items_collected = None
 
-        # sq = SeedSequence(self._seed)
-        # seed = sq.spawn(1)[0]
-        # rng = default_rng(seed)
-        # [rng.random(3) for rng in [default_rng(s) for s in sq.spawn(3)]] v.s. [rng.random(3) for rng in [default_rng(s.entropy) for s in sq.spawn(3)]]
-        seeds = self._seedsequence.generate_state(3)  # default_rng() can be created with _seedsequence directly, spaces not.
-        seeds = [int(s) for s in seeds]  # spaces want int.
+        seeds: np.ndarray = self._seedsequence.generate_state(4)  # dtype: numpy.uint32
+        seeds: list[int] = [int(s) for s in seeds]  # Space want a python integer seed
         self._seedsequence = self._seedsequence.spawn(1)[0]  # update _seedsequence for new seeds next time you ask a seed.
+        # self._seedsequence.spawn  # todo: la lista di spawn_key diventa lunghissima, it is very expensive.
+        self.np_random = default_rng(seeds[3])  # type: np.random.Generator
         self.action_space = spaces.Box(low=0., high=1.,
                                        shape=(2,),
                                        dtype=np.float32,
@@ -848,7 +852,18 @@ class BaseForagingEnv(gym.Env, MustOverride):
         logging.debug('Reset')
         super().reset(seed=seed,
                       return_info=return_info,
-                      options=options)
+                      options=options)  # here should set self.np_random, so no need to do it again later
+        if seed is not None:
+            self._seed = seed
+            self._seedsequence = SeedSequence(self._seed)
+            seeds: np.ndarray = self._seedsequence.generate_state(3)  # dtype: numpy.uint32
+            seeds: list[int] = [int(s) for s in seeds]  # Space want a python integer seed
+            self._seedsequence = self._seedsequence.spawn(1)[
+                0]  # update _seedsequence for new seeds next time you ask a seed.
+            # todo: la lista di spawn_key diventa lunghissima, it is very expensive.
+            self.action_space.seed(seeds[0])
+            self.observation_space.seed(seeds[1])
+            self.env_space.seed(seeds[2])
         self._step_count = 0
         self.__get_observation_points_cache = {}  # empty observation cache
         self.t = 0
@@ -950,6 +965,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
         # flip/update the screen:
         if mode == 'human' or re.search(r'^(?:.*\+)?human(?:\+.*)?$', mode):
+            if self._inverted_color_rendering:
+                invert_colors_inplace(self._screen)
             pg.display.flip()  # pg.display.update()
 
         # if in 'save' mode, save frames of the main screen.
@@ -1074,9 +1091,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
         for pt in self._get_observation_points().reshape((-1, 2)):
             if 0 <= pt[0] <= self._env_size[0] and 0 <= pt[1] <= self._env_size[1]:
                 pt = self.get_point_env2win(pt)
-                # pg.draw.circle(screen, COLORS['blue'], pt.coords[0], r)
+                vision_dot_color = COLORS['orange']  # COLORS['blue']
+                # pg.draw.circle(screen, vision_dot_color, pt.coords[0], r)
                 circle = pg.Surface((r * 2, r * 2), pg.SRCALPHA)
-                pg.draw.circle(circle, (*COLORS['blue'], self._vision_point_transparency), (r, r), r)
+                pg.draw.circle(circle, (*vision_dot_color, self._vision_point_transparency), (r, r), r)
                 screen.blit(circle, (pt[0] - r, pt[1] - r))
         # # todo: put them all in a group and draw only at the end: is it faster?
         # points = self._get_observation_points().reshape((-1, 2))
@@ -1296,8 +1314,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
             #   with self._vision_resolution points,
             #   the starting segment is parallel to x-axis (same direction of x-axis)
             line_endpoints = (
+                (self._agent.pos[0] + self._vision_depth, self._agent.pos[1]),
                 (self._agent.pos[0] + self._vision_start, self._agent.pos[1]),
-                (self._agent.pos[0] + self._vision_depth, self._agent.pos[1])
+                # reversed start-end to have a right image
             )
             span_x = np.linspace(line_endpoints[0][0], line_endpoints[1][0], num=self._vision_resolution, endpoint=True)
             span_y = np.linspace(line_endpoints[0][1], line_endpoints[1][1], num=self._vision_resolution, endpoint=True)

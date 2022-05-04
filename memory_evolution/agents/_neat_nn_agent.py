@@ -16,11 +16,9 @@ import neat
 import numpy as np
 from numpy.random import SeedSequence, default_rng
 import pygame
-from shapely.affinity import rotate, scale, translate
-from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiPoint, MultiPolygon
-from shapely.ops import unary_union, triangulate
 
 from memory_evolution.agents import BaseNeatAgent
+from memory_evolution.utils import normalize_observation
 from memory_evolution.utils import MustOverride, override
 
 
@@ -35,7 +33,7 @@ class RnnNeatAgent(BaseNeatAgent):
         """Extends the base method."""
         super().action(observation)
         net = self.phenotype
-        action = net.activate(self.normalize_observation(observation))
+        action = net.activate(self._normalize_observation(observation))
         return np.asarray(action, dtype=self._env.action_space.dtype)
 
     def reset(self) -> None:

@@ -52,6 +52,7 @@ class FitnessRewardAndSteps(BaseFitness):
             tot = reward_weight + steps_weight
             reward_weight /= tot
             steps_weight /= tot
+        self._normalize_weights = normalize_weights
         self.reward_weight = reward_weight
         self.steps_weight = steps_weight
 
@@ -69,6 +70,9 @@ class FitnessRewardAndSteps(BaseFitness):
         fitness = self.reward_weight * reward + self.steps_weight * (1 - steps)
         # todo:  (1 - steps) v.s. 1/steps
         return fitness
+
+    def __repr__(self):
+        return f"{type(self).__qualname__}({self.reward_weight}, {self.steps_weight}, {self._normalize_weights})"
 
 
     # # fitness: (total_reward, agent_distance_from_start):

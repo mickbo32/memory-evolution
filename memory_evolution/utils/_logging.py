@@ -8,6 +8,10 @@ from typing import Optional
 import pandas as pd
 
 
+# get utcnow string:
+def get_utcnow_str():
+    return pd.Timestamp.utcnow().strftime('%Y-%m-%d_%H%M%S.%f%z')
+
 # logging settings:
 def set_main_logger(
                 logger_name: Optional[str] = None,
@@ -31,7 +35,7 @@ def set_main_logger(
     Log file extension should be '.log', if it is different or missing it will be added.
     """
     # get utcnow string:
-    utcnow = pd.Timestamp.utcnow().strftime('%Y-%m-%d_%H%M%S.%f%z')
+    utcnow = get_utcnow_str()
 
     logFormatter = logging.Formatter(
         "%(asctime)s [%(processName)-12s %(process)-7d] [%(threadName)-12s %(thread)-7d] "

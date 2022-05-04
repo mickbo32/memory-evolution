@@ -1,8 +1,9 @@
 from abc import ABC, abstractmethod
-from collections import defaultdict, Counter
+from collections import defaultdict, Counter, deque
 from collections.abc import Iterable, Sequence
 from functools import reduce
 import inspect
+import json
 import math
 import multiprocessing
 from numbers import Number, Real
@@ -19,6 +20,7 @@ from gym import spaces
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import neat
+# from neat import visualize
 import numpy as np
 from numpy.random import SeedSequence, default_rng
 import pandas as pd
@@ -28,9 +30,11 @@ from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiP
 from shapely.ops import unary_union, triangulate
 
 import memory_evolution
+from memory_evolution import visualize
 from memory_evolution.agents import BaseAgent
 from memory_evolution.agents.exceptions import EnvironmentNotSetError
 from memory_evolution.evaluate import evaluate_agent, FitnessRewardAndSteps
+from memory_evolution.utils import get_color_str, normalize_observation
 from memory_evolution.utils import MustOverride, override
 from .exceptions import NotEvolvedError
 
@@ -200,6 +204,7 @@ class BaseNeatAgent(BaseAgent, ABC):
         """Extends 'action()' method from base class.
         Reset the agent to an initial state ``t==0``."""
         super().reset()
+        self.phenotype.reset()
 
     def eval_genomes(self, genomes, config) -> None:
         for genome_id, genome in genomes:
@@ -249,26 +254,169 @@ class BaseNeatAgent(BaseAgent, ABC):
     def visualize_evolution(self, stats, stats_ylog=False, view=False,
                             filename_stats="fitness.svg",
                             filename_speciation="speciation.svg"):
-        neat.visualize.plot_stats(stats, ylog=stats_ylog, view=view, filename=filename_stats)
-        neat.visualize.plot_species(stats, view=view, filename=filename_speciation)
+        visualize.plot_stats(stats, ylog=stats_ylog, view=view, filename=filename_stats)
+        visualize.plot_species(stats, view=view, filename=filename_speciation)
 
     def visualize_genome(self, genome, name='Genome',
                          view=False, filename=None,
                          show_disabled=True, prune_unused=False,
-                         node_colors=None, format='sgv'):  # 'format' abbreviation: fmt
+                         node_colors=None, format='sgv',
+                         default_input_node_color: Literal['palette', 'default'] = 'default',  # default: 'lightgray'
+                         ):  # 'format' abbreviation: fmt
         """Display the genome."""
         print('\n{!s}:\n{!s}'.format(name, genome))
 
+        rankdir = 'TB'
+        node_positions = None
+        node_attributes = None
+        if default_input_node_color == 'palette':
+            rankdir = 'LR'
+            env = self.get_env()
+            obs_shape = env.observation_space.shape
+            obs_size = reduce(mul, env.observation_space.shape, 1)
+            input_nodes = self.config.genome_config.input_keys
+            assert obs_size == len(input_nodes) == len(self.phenotype.input_nodes)
+            assert input_nodes == self.phenotype.input_nodes
+            n_rows = env.observation_space.shape[0]
+            n_cols = env.observation_space.shape[1]
+            palette = np.empty((n_rows, n_cols, 3), dtype=np.uint8)
+            indexes = np.empty((n_rows, n_cols), dtype=int)
+            _input_node_colors = {}
+            # _input_node_positions = {}
+            k = 0
+            for i in range(n_rows):
+                for j in range(n_cols):
+                    indexes[i, j] = k
+                    norm_i = i / (n_rows - 1)
+                    norm_j = j / (n_cols - 1)
+                    norm_diag = (norm_i + norm_j) / 2
+                    palette[i, j] = np.asarray((255 * norm_i, 255 * norm_j, 255 * (1. - norm_diag)), dtype=np.uint8)
+                    _input_node_colors[input_nodes[k]] = get_color_str(palette[i, j])
+                    # _input_node_positions[input_nodes[k]] = (j * .5, - i * .5)
+                    k += 1
+            assert k == len(input_nodes)
+            assert obs_size == len(input_nodes) == len(_input_node_colors)
+            plt.matshow(palette)
+            inputs_palette_filename = ('' if filename is None else filename) + "_inputs_palette.png"
+            plt.savefig(inputs_palette_filename)
+            if view:
+                plt.show()
+            # if node_colors are provided the default _input_node_colors value is overwritten if present:
+            if node_colors is not None:
+                node_colors = _input_node_colors | node_colors
+            else:
+                node_colors = _input_node_colors
+            # node_positions = _input_node_positions
+
+            '''
+            # compute node_positions for other nodes:
+            output_nodes = self.config.genome_config.output_keys
+            _output_nodes_set = set(output_nodes)
+            hidden_nodes = [n.key for n in self.genome.nodes.values() if n.key not in _output_nodes_set]
+            graph = {k: [] for k in (*input_nodes, *hidden_nodes, *output_nodes)}
+            for cg in self.genome.connections.values():
+                in_node, out_node = cg.key
+                graph[in_node].append(out_node)
+            def bfs(graph, nodes):
+                assert list(graph.keys())[:len(input_nodes)] == input_nodes
+                node_rank = {}
+                q = deque()
+                for node in nodes:
+                    assert node not in node_rank
+                    node_rank[node] = 0
+                    q.append(node)
+                    while q:
+                        u = q.popleft()
+                        level = node_rank[u]
+                        for v in graph[u]:
+                            if v not in node_rank or node_rank[v] > level + 1:
+                                node_rank[v] = level + 1
+                                q.append(v)
+                return node_rank
+            starting_nodes = set(graph.keys())
+            for cg in self.genome.connections.values():
+                in_node, out_node = cg.key
+                if out_node in starting_nodes:
+                    starting_nodes.remove(out_node)
+            node_rank = bfs(graph, starting_nodes)
+            max_rank = max(node_rank.values())
+            rank_scale = 2
+            offset = 5
+            height = n_rows * .7
+            hidden_ranks = defaultdict(list)
+            for h in hidden_nodes:
+                hidden_ranks[node_rank[h]].append(h)
+            max_hidden_rank = max(hidden_ranks)
+            for i, node in enumerate(hidden_ranks[0]):
+                node_positions[node] = (0, + (i + 1) * 1 + .1)
+            for rank in range(1, max_hidden_rank):
+                scale = height / (len(hidden_ranks[rank]) + 1)
+                for i, node in enumerate(hidden_ranks[rank]):
+                    node_positions[node] = (rank * rank_scale + offset, - (i + 1) * scale + .5)
+            out_scale = height / (len(output_nodes) + 1)
+            for i, node in enumerate(output_nodes):
+                node_positions[node] = (max(max_rank, max_hidden_rank + 1) * rank_scale + offset, - (i + 1) * out_scale + .5)
+            '''
+
         node_names = self.node_names
-        neat.visualize.draw_net(
+        dot = visualize.draw_net(
             self.config, genome, view=view,
             filename=filename,
             node_names=node_names,
             show_disabled=show_disabled,
             prune_unused=prune_unused,
             node_colors=node_colors,
-            format=format
+            node_positions=node_positions,
+            node_attributes=node_attributes,
+            rankdir=rankdir,
+            format=format,
+            order_inputs=False,
+            order_outputs=False,
+            render=False,
         )
+
+        '''
+        if default_input_node_color == 'palette':
+            # order by adding invisible edges:
+            for k, k2 in zip(self.config.genome_config.input_keys[:-1], self.config.genome_config.input_keys[1:]):
+                in_name = node_names.get(k, str(k))
+                in2_name = node_names.get(k2, str(k2))
+                dot.edge(in_name, in2_name, _attributes={'style': 'invis'})
+
+            # put the inputs in column clusters and row groups:
+            with dot.subgraph(name='cluster_inputs') as dot_inputs:
+                #dot_inputs.graph_attr['compound'] = 'true'
+                for col in indexes.T:
+                    with dot_inputs.subgraph() as dot_sub_inputs:
+                        dot_sub_inputs.attr(rank='same')
+                        inputs = set()
+                        for i, k in enumerate(col):
+                            k = input_nodes[k]
+                            inputs.add(k)
+                            name = node_names.get(k, str(k))
+                            dot_sub_inputs.node(name, _attributes={'group': str(i)})
+
+            # connect the last input to all the other nodes connected to input
+            # with invisible edges to make them be presented later:
+
+            input_nodes_set = set(input_nodes)
+            for cg in self.genome.connections.values():
+                i, o = cg.key
+                if i in input_nodes_set:
+                    in_name = node_names.get(i, str(i))
+                    out_name = node_names.get(o, str(o))
+                    dot.edge(in_name, out_name, _attributes={'style': 'invis'})
+
+            last_in = input_nodes[-1]
+            crossing_hidden = self.config.genome_config.output_keys[0]
+            in_name = node_names.get(last_in, str(last_in))
+            out_name = node_names.get(crossing_hidden, str(crossing_hidden))
+            dot.edge(in_name, out_name, _attributes={'style': 'invis', 'lhead': 'hidden'})
+            '''
+
+        dot.render(filename, view=view)
+        print(dot.source)
+
 
     def evolve(self,
                n=None,
@@ -278,7 +426,7 @@ class BaseNeatAgent(BaseAgent, ABC):
                filename_tag: str = '',
                path_dir: str = '',
                image_format: str = 'svg',
-               render_best: bool = False,  # render the best agent
+               view_best: bool = False,  # render the best agent and show stats and genome by opening plots
                ) -> tuple[neat.genome.DefaultGenome, neat.statistics.StatisticsReporter]:
         """Evolve a population of agents of the type of self and then return
         the best genome. The best genome is also saved in self. It returns also
@@ -348,18 +496,22 @@ class BaseNeatAgent(BaseAgent, ABC):
         with open(make_filename("genome.pickle"), "wb") as f:
             pickle.dump(winner, f)
 
+        # Pickle stats.
+        with open(make_filename("stats.pickle"), "wb") as f:
+            pickle.dump(stats, f)
+
         # Display stats on the evolution performed.
-        self.visualize_evolution(stats, stats_ylog=True, view=True,
+        self.visualize_evolution(stats, stats_ylog=True, view=view_best,
                                  filename_stats=make_filename("fitness." + image_format),
                                  filename_speciation=make_filename("speciation." + image_format))
 
         # Display the winning genome.
         print('\nBest genome:\n{!s}'.format(winner))
-        self.visualize_genome(winner, view=True, name='Best Genome', filename=make_filename("winner-genome.gv"),
+        self.visualize_genome(winner, view=view_best, name='Best Genome', filename=make_filename("winner-genome.gv"),
                               format=image_format)
 
         # Show output of the most fit genome against training data.
-        if render_best:
+        if view_best:
             print('\nOutput:')
             print('rendering one episode with the best agent...')
             evaluate_agent(self, self.get_env(), episodes=1, render=True, save_gif=False)

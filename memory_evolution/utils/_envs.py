@@ -26,6 +26,7 @@ COLORS = {key: (np.asarray(col) * 255).astype(np.uint8)
               {k: mcolors.hex2color(col) for k, col in mcolors.CSS4_COLORS.items()},
           )
           for key, col in colors.items()}
+
 def is_color(col):
     return (isinstance(col, np.ndarray)
             and col.dtype == np.uint8
@@ -39,10 +40,33 @@ assert any(any((c == 255) for c in col)
 # print(COLORS)
 
 
+def get_color_str(col: np.ndarray) -> str:
+    if not is_color(col):
+        raise ValueError(f"'col' is not a color")
+    return '#' + ''.join(f"{c:02x}" for c in col)
+
+
 def black_n_white(img: np.ndarray):
     return (img.sum(-1) / img.shape[-1]).round().astype(img.dtype)[..., None]
     # np.sum: dtype: if a is unsigned then an unsigned integer
     #         of the same precision as the platform integer is used.
+
+
+_NORMALIZE__MAX_PIXEL_VALUE = np.asarray(255, dtype=np.float32)  # float32 so the output of division is a float32
+
+
+def normalize_observation(observation: np.ndarray) -> np.ndarray:
+    """Normalize and ravel."""
+    return observation.reshape(-1, order='C') / _NORMALIZE__MAX_PIXEL_VALUE
+
+
+def denormalize_observation(observation: np.ndarray, obs_shape) -> np.ndarray:
+    return observation.reshape(obs_shape, order='C') * _NORMALIZE__MAX_PIXEL_VALUE
+
+
+def invert_colors_inplace(surface: pg.Surface):
+    pixels = pg.surfarray.pixels2d(surface)  # use a reference to pixels
+    pixels ^= 2 ** 32 - 1
 
 
 IMAGE_FORMAT = Literal["P", "RGB", "BGR", "RGBX", "RGBA", "ARGB"]

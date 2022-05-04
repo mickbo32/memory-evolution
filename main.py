@@ -74,7 +74,7 @@ if __name__ == '__main__':
     # logging settings:
     logging_dir, UTCNOW = set_main_logger(file_handler_all=None,
                                           stdout_handler=logging.INFO,
-                                          file_handler_now=logging.DEBUG + 1,
+                                          file_handler_now=logging.DEBUG + 5,
                                           file_handler_now_filename_fmt="log_" + JOB_ID + "_{utcnow}.log")
     logging.info(__file__)
 
@@ -130,12 +130,13 @@ if __name__ == '__main__':
     #                       food_color=COLORS['white'], outside_color=COLORS['gray'], background_color=COLORS['black'],
     #                       )
     env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.075, food_size=.0375,
-                          n_food_items=10, max_steps=1000,
+                          n_food_items=10, max_steps=500,
                           rotation_step=10., forward_step=.01,
                           # vision_depth=.3, vision_field_angle=135, vision_resolution=15,
                           vision_depth=.3, vision_field_angle=135, vision_resolution=7,
+                          # food_color=COLORS['black'], outside_color=COLORS['black'], background_color=COLORS['white'],
                           # food_color=COLORS['black'], outside_color=COLORS['gray'], background_color=COLORS['white'],
-                          food_color=COLORS['white'], outside_color=COLORS['gray'], background_color=COLORS['black'],
+                          # food_color=COLORS['white'], outside_color=COLORS['gray'], background_color=COLORS['black'],
                           )
 
     # env = RadialArmMaze(3, 1., window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
@@ -177,7 +178,9 @@ if __name__ == '__main__':
             else:
                 assert env._init_params.arguments[k] == v
     # check env:
-    check_env(env)  # todo: move in tests
+    #check_env(env)  # todo: move in tests
+    random.seed()  # reseed, because check_env(env) sets always the same random.seed
+    logging.debug(random.getstate())
     print('Env checked.')
 
     # print(env.action_space)  # Discrete(4)
@@ -201,21 +204,12 @@ if __name__ == '__main__':
     Phenotype = RnnNeatAgent
 
     # set Phenotype attributes (overwrite default values, e.g. fitness and evaluate_agent params):
-    # Phenotype.fitness_func = memory_evolution.evaluate.FitnessRewardAndSteps(1., 4., normalize_weights=False)
-    # Phenotype.eval_num_episodes = 2
-    # Phenotype.eval_episodes_aggr_func = 'min'
-    # Phenotype.fitness_func = memory_evolution.evaluate.FitnessRewardAndSteps(1., 4., normalize_weights=False)
+    Phenotype.fitness_func = memory_evolution.evaluate.FitnessRewardAndSteps(5., 5., normalize_weights=False)
+    Phenotype.eval_num_episodes = 2
+    Phenotype.eval_episodes_aggr_func = 'min'
+    # Phenotype.fitness_func = memory_evolution.evaluate.FitnessRewardAndSteps(4., 6., normalize_weights=False)
     # Phenotype.eval_num_episodes = 5
     # Phenotype.eval_episodes_aggr_func = 'median'
-    # Phenotype.fitness_func = memory_evolution.evaluate.FitnessRewardAndSteps(4., 6., normalize_weights=False)
-    # Phenotype.eval_num_episodes = 10
-    # Phenotype.eval_episodes_aggr_func = 'min'
-    # Phenotype.fitness_func = memory_evolution.evaluate.FitnessRewardAndSteps(4., 6., normalize_weights=False)
-    # Phenotype.eval_num_episodes = 10
-    # Phenotype.eval_episodes_aggr_func = 'median'
-    Phenotype.fitness_func = memory_evolution.evaluate.FitnessRewardAndSteps(4., 6., normalize_weights=False)
-    Phenotype.eval_num_episodes = 5
-    Phenotype.eval_episodes_aggr_func = 'median'
 
     # dump Phenotype for later use:
     with open(os.path.join(logging_dir, LOG_TAG + '_phenotype.pickle'), "wb") as f:
@@ -238,8 +232,8 @@ if __name__ == '__main__':
         # note2: if you render all and if you minimize the window or you put it in a part of the screen not visible
         #        the algorithm will go way faster, so you can make it faster and debugging
         #        at your choice by knowing this.
-        # render, parallel, render_best = True, False, True      # local execution, render all
-        render, parallel, render_best = False, True, True     # local execution, show best
+        render, parallel, render_best = True, False, True      # local execution, render all
+        # render, parallel, render_best = False, True, True     # local execution, show best
     else:  # remote execution
         render, parallel, render_best = False, True, False    # remote execution, just save gifs
 
@@ -252,9 +246,9 @@ if __name__ == '__main__':
                                          LOG_TAG + '_neat-checkpoint-'))
 
     agent.set_env(env)
-    winner = agent.evolve(1000, render=render, checkpointer=checkpointer, parallel=parallel,
+    winner = agent.evolve(500, render=render, checkpointer=checkpointer, parallel=parallel,
                           filename_tag=LOG_TAG + '_', path_dir=logging_dir, image_format='png',
-                          render_best=False)
+                          view_best=False)
     # fixme: todo: parallel=True use the same seed for the environment in each process
     #     (but for the agent is correctly using a different seed it seems)
 

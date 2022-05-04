@@ -20,6 +20,7 @@ from numpy.random import SeedSequence, default_rng
 import pandas as pd
 
 from memory_evolution.evaluate import evaluate_agent
+from memory_evolution.utils import normalize_observation
 from memory_evolution.utils import MustOverride, override
 from .exceptions import EnvironmentNotSetError
 
@@ -40,11 +41,13 @@ class BaseAgent(ABC):
         return self._env
 
     def set_env(self, env: gym.Env) -> None:
+        # if not np.array_equiv(env.observation_space.low, 0) or not np.array_equiv(env.observation_space.high, 1):
+        #     raise ValueError("env.observation_space should be in the range [0,1]")
         self._env = env
 
     @staticmethod
-    def normalize_observation(observation: np.ndarray) -> np.ndarray:
-        return observation.reshape(-1) / 255
+    def _normalize_observation(observation: np.ndarray) -> np.ndarray:
+        return normalize_observation(observation)
         # returned dtype is dtype('float64'), should it be cast to np.float32 ?
         # casting is not necessary for neat (I think neat main graph it
         # doesn't use numpy).
