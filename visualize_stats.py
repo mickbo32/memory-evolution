@@ -39,8 +39,8 @@ if __name__ == '__main__':
     # ----- Settings -----
     RENDER = False  # render or just save gif files
     # ---
-    LOAD_AGENT = '8499798_2022-04-25_163845.730764+0000'
-    # LOAD_AGENT = '8505569_2022-05-01_140544.462333+0000'
+    # LOAD_AGENT = '8499798_2022-04-25_163845.730764+0000'  # best genome
+    LOAD_AGENT = '8508254_2022-05-04_021025.108389+0000'
     LOAD_AGENT_DIR = "logs/saved_logs/no-date/logs/"
     N_EPISODES = 2
     LOAD_FROM: AVAILABLE_LOADING_METHODS = 'pickle'
@@ -144,18 +144,18 @@ if __name__ == '__main__':
     else:
         raise AssertionError
 
-    # with open(LOAD_STATS, "rb") as f:
-    #     input(
-    #         "Stats file can be big, do you really want to open it?"
-    #         " (be sure you have a lot of free memory (e.g. close Chrome before going on))"
-    #         " [Press ENTER to continue]")
-    #     print('Loading stats...')
-    #     stats = pickle.load(f)
-    # print(stats)
-    #
-    # agent.visualize_evolution(stats, stats_ylog=True, view=True,
-    #                           filename_stats=os.path.join(LOGGING_DIR, LOADED_UTCNOW + "_fitness.png"),
-    #                           filename_speciation=os.path.join(LOGGING_DIR, LOADED_UTCNOW + "_speciation.png"))
+    with open(LOAD_STATS, "rb") as f:
+        # input(
+        #     "Stats file can be big, do you really want to open it?"
+        #     " (be sure you have a lot of free memory (e.g. close Chrome before going on))"
+        #     " [Press ENTER to continue]")
+        print('Loading stats...')
+        stats = pickle.load(f)
+    print(stats)
+
+    agent.visualize_evolution(stats, stats_ylog=True, view=True,
+                              filename_stats=os.path.join(LOGGING_DIR, LOADED_UTCNOW + "_fitness.png"),
+                              filename_speciation=os.path.join(LOGGING_DIR, LOADED_UTCNOW + "_speciation.png"))
 
     obs_shape = env.observation_space.shape
     obs_size = reduce(mul, env.observation_space.shape, 1)

@@ -56,7 +56,13 @@ class FitnessRewardAndSteps(BaseFitness):
         self.reward_weight = reward_weight
         self.steps_weight = steps_weight
 
+        self.min = 0  # assuming non-negative reward
+        assert self.reward_weight > 0 and self.steps_weight > 0, 'assuming normalization of reward and steps and positive weights'
+        self.max = self.reward_weight + self.steps_weight  # assuming normalization of reward and steps and positive weights
+        assert self.min <= self.max
+
     def __call__(self, *, reward, steps, done, env, **kwargs) -> float:
+        assert reward >= 0, (reward, 'assuming non-negative reward')
         #assert isinstance(env, memory_evolution.envs.BaseForagingEnv), type(env)  # todo: use weights per normalizzare, usa env in FitnessRewardAndStepsBaseForagingEnv
         reward /= env.maximum_reward  # normalize total_reward
         assert 0 <= reward <= 1, reward
@@ -69,6 +75,7 @@ class FitnessRewardAndSteps(BaseFitness):
         assert 0 <= steps <= 1, steps
         fitness = self.reward_weight * reward + self.steps_weight * (1 - steps)
         # todo:  (1 - steps) v.s. 1/steps
+        assert self.min <= fitness <= self.max, (fitness, (self.min, self.max))
         return fitness
 
     def __repr__(self):

@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 import copy
+import math
 from typing import Literal, Optional
 from collections.abc import Sequence
 import warnings
@@ -14,6 +15,7 @@ except ModuleNotFoundError as err:
     warnings.warn(__package__ + ': Missing optional dependency to display nets (graphviz)'
                   " (to install it try 'conda install -n <name-of-your-conda-environment> python-graphviz pydot' or use pip, then restart the terminal)")
 try:
+    import matplotlib as mpl
     import matplotlib.pyplot as plt
 except ModuleNotFoundError as err:
     plt = None
@@ -21,7 +23,7 @@ except ModuleNotFoundError as err:
 import numpy as np
 
 
-def plot_stats(statistics, ylog=False, view=False, filename='fitness.svg'):
+def plot_stats(statistics, ylog=False, view=False, filename='fitness.svg', ylim=None):
     """ Plots the population's average and best fitness. """
     if plt is None:
         warnings.warn("This display is not available due to a missing optional dependency (matplotlib)")
@@ -43,7 +45,19 @@ def plot_stats(statistics, ylog=False, view=False, filename='fitness.svg'):
     plt.grid()
     plt.legend(loc="best")
     if ylog:
-        plt.gca().set_yscale('symlog')
+        base = 10
+        ax = plt.gca()
+        # ax.set_yscale('symlog')
+        ax.set_yscale(mpl.scale.SymmetricalLogScale(ax, base=base, linthresh=1, subs=[2.5, 5, 7.5]))
+        ax.grid(True, which='minor', color='gainsboro', linestyle=':', linewidth=.5)
+        if ylim is not None:
+            pass  # todo: yticks
+    if ylim is not None:
+        plt.gca().set_ylim(ylim)  # ax.set_ylim([ymin, ymax])
+        # plt.xlim(right=xmax)  # xmax is your value
+        # plt.xlim(left=xmin)  # xmin is your value
+        # plt.ylim(top=ymax)  # ymax is your value
+        # plt.ylim(bottom=ymin)  # ymin is your value
 
     plt.tight_layout()
     plt.savefig(filename)

@@ -246,7 +246,7 @@ if __name__ == '__main__':
                                          LOG_TAG + '_neat-checkpoint-'))
 
     agent.set_env(env)
-    winner = agent.evolve(500, render=render, checkpointer=checkpointer, parallel=parallel,
+    winner = agent.evolve(1000, render=render, checkpointer=checkpointer, parallel=parallel,
                           filename_tag=LOG_TAG + '_', path_dir=logging_dir, image_format='png',
                           view_best=False)
     # fixme: todo: parallel=True use the same seed for the environment in each process
