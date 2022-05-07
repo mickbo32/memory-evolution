@@ -317,6 +317,21 @@ class FoodItem(CircleItem):
         # self._self_repr_properties.append(NOTHING)
 
 
+class LandMark(CircleItem):
+    """landmark item."""
+
+    def __init__(self, pos, size: Real, color, env):
+        """
+
+        Args:
+            pos: a point representing the position of the landmark item.
+            size: the landmark item diameter.
+        """
+        super().__init__(pos, size, color=color, env=env)
+        # self._self_str_properties.append(NOTHING)
+        # self._self_repr_properties.append(NOTHING)
+
+
 def _constructor(cls, args, kwargs):
     print(cls, args, kwargs)
     return cls(*args, **kwargs)
@@ -448,10 +463,13 @@ class BaseForagingEnv(gym.Env, MustOverride):
                  observation_noise: Sequence[str, Real, Real] = None,
                  init_agent_position: Optional[Pos] = None,
                  init_food_positions: Optional[Sequence[Pos]] = None,
-                 agent_color: Sequence[int] = COLORS['red'],
-                 food_color: Sequence[int] = COLORS['white'],
+                 init_landmarks_positions: Optional[Sequence[Pos]] = None,
+                 landmark_size: float = .05,
+                 agent_color: Sequence[int] = COLORS['cyan'],
+                 food_color: Sequence[int] = COLORS['green'],
                  background_color: Sequence[int] = COLORS['black'],  # todo: do background with Texture (not actually needed)
-                 outside_color: Sequence = COLORS['gray'],  # todo: do background with Texture (not actually needed)
+                 outside_color: Sequence[int] = COLORS['red'],  # todo: do background with Texture (not actually needed)
+                 landmarks_colors: Union[None, Sequence[int], Sequence[Sequence[int]]] = COLORS['blue'],
                  inverted_color_rendering: bool = True,
                  max_steps: Optional[int] = None,
                  fps: Optional[int] = None,
@@ -473,6 +491,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 of movement in 2D space for each tick/step.
             agent_size: agent diameter.
             food_size: food item diameter.
+            landmark_size: landmark item size.
             vision_depth: depth of the sight of the agent, each straight line of vision
                     will be extended for a ``vision_depth`` length (from agent center).
             vision_field_angle: angle of the full field of view of the agent.
@@ -498,11 +517,15 @@ class BaseForagingEnv(gym.Env, MustOverride):
             init_food_positions: if provided should be a list of ``n_food_items`` valid
                     food item positions (in the environment space). If ``None``,
                     ``n_food_items`` food items are spawned in random positions.
+            init_landmarks_positions: if provided should be a list of valid initial
+                    positions of landmarks.
             agent_color: RGB Sequence of 3 integers in range [0, 255]
             food_color: RGB Sequence of 3 integers in range [0, 255]
             inverted_color_rendering: invert colors when rendering the environment.
             background_color: RGB Sequence of 3 integers in range [0, 255]
             outside_color: RGB Sequence of 3 integers in range [0, 255]
+            landmarks_colors: list of landmarks colors, should have the same length of
+                    ``init_landmarks_positions``.
             max_steps: after this number of steps the environment is done, even if no all
                     food items are collected(the ``max_steps``_th step it will return
                     done True); if ``None`` continue forever (done always False).
@@ -542,6 +565,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._forward_step = forward_step
         self._agent_size = agent_size
         self._food_size = food_size
+        self._landmark_size = landmark_size
         self._vision_depth = vision_depth
         self._vision_field_angle = vision_field_angle
         self._vision_resolution = vision_resolution
@@ -570,17 +594,18 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
         # colors:
         if not is_color(agent_color):
-            raise ValueError("'agent_color' is not a color")
+            raise ValueError(f"'agent_color' is not a color ({agent_color})")
         if not is_color(food_color):
-            raise ValueError("'food_color' is not a color")
+            raise ValueError(f"'food_color' is not a color ({food_color})")
         if not is_color(background_color):
-            raise ValueError("'background_color' is not a color")
+            raise ValueError(f"'background_color' is not a color ({background_color})")
         if not is_color(outside_color):
-            raise ValueError("'outside_color' is not a color")
+            raise ValueError(f"'outside_color' is not a color ({outside_color})")
         self._agent_color = agent_color
         self._food_color = food_color
         self._background_color = background_color
         self._outside_color = outside_color
+        self._landmarks_colors = landmarks_colors
 
         self._vision_point_win_radius = max(self._env2win_resize_factor * min(self._env_size) * .005, 1)
         self._vision_point_transparency = self.__get_vision_point_transparency(
@@ -598,9 +623,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
         self._step_count = None
         self._agent = None  # todo: probably this is not needed
-        self._agent_group = pg.sprite.GroupSingle()  # todo: call this _agent
+        self._agent_group = pg.sprite.GroupSingle()
         self._food_items = []  # todo: probably this is not needed
-        self._food_items_group = pg.sprite.Group()  # todo: call this _food_items
+        self._food_items_group = pg.sprite.Group()
+        self._landmarks_group = pg.sprite.Group()
         self._env_img = None  # todo: make state (env_state) an object
         self.__get_observation_points_cache = {}
         self._food_items_collected = None
@@ -686,7 +712,36 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 if len(pos) != 2:
                     raise ValueError("position in 'init_food_positions' should be 2D (and without channels)")
         self._init_food_positions = init_food_positions
-        # checks on init_agent_position and init_food_positions positions validation in self.reset()
+        if init_landmarks_positions is not None:
+            landmark_err_msg_fmt = (
+                "'landmarks_colors' should be a color or a list of colors, "
+                "in the latter case the length of 'landmarks_colors' should "
+                "be the same of 'init_landmarks_positions'.\n"
+                "\tinit_landmarks_positions: {}\n"
+                "\tlandmarks_colors: {}\n"
+            )
+            if not (is_color(self._landmarks_colors)
+                    or len(init_landmarks_positions) == len(self._landmarks_colors)
+                    and all(is_color(col) for col in self._landmarks_colors)):
+                if not is_color(self._landmarks_colors):
+                    landmark_err_msg_fmt += "\t\t'landmarks_colors' is not a color\n"
+                if len(init_landmarks_positions) != len(self._landmarks_colors):
+                    landmark_err_msg_fmt += (f"\t\t'init_landmarks_positions' ({len(init_landmarks_positions)}) "
+                                             f"and 'landmarks_colors' ({len(self._landmarks_colors)}) "
+                                             f" have different length\n")
+                if not all(is_color(col) for col in self._landmarks_colors):
+                    landmark_err_msg_fmt += "\t\tnot all 'landmarks_colors' are colors\n"
+                raise ValueError(landmark_err_msg_fmt.format(init_landmarks_positions, landmarks_colors))
+            for pos in init_landmarks_positions:
+                if not isinstance(pos, Iterable):
+                    raise TypeError("position in 'init_landmarks_positions' should be something from which a point can be generated (an Iterable)")
+            init_landmarks_positions = [(pos if isinstance(pos, Pos) else Pos(*pos))
+                                        for pos in init_landmarks_positions]
+            for pos in init_landmarks_positions:
+                if len(pos) != 2:
+                    raise ValueError("position in 'init_landmarks_positions' should be 2D (and without channels)")
+        self._init_landmarks_positions = init_landmarks_positions
+        # checks on init_agent_position and init_food_positions (and others) positions validation in self.reset()
 
         # Rendering:
         self._rendering = False  # rendering never used
@@ -897,6 +952,13 @@ class BaseForagingEnv(gym.Env, MustOverride):
                         raise ValueError(f"food item positions in 'init_food_positions'"
                                          f" is not valid: {pos}")
             # TODO FIXME: check also that agent is not touching food
+            if self._init_landmarks_positions is not None:
+                assert is_color(self._landmarks_colors) or len(self._init_landmarks_positions) == len(self._landmarks_colors)
+                for pos in self._init_landmarks_positions:
+                    if not (0 <= pos[0] <= self._env_size[0] and 0 <= pos[1] <= self._env_size[1]):
+                        raise ValueError(f"landmark item positions in 'init_landmarks_positions'"
+                                         f" is not valid: {pos}")
+                    # landmarks can be anywhere, except being totally outside the env.
 
         # init environment state:
         self._init_state()
@@ -1066,6 +1128,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # draw food items:
         self._food_items_group.draw(self._env_img)
 
+        # draw landmarks:
+        self._landmarks_group.draw(self._env_img)
+
         # draw agent:
         # agent is drawn later than food items, so that it is shown on top.
         # self._agent_group.draw(self._env_img)  # this is done only in rendering, otherwise the observation sees itself
@@ -1156,6 +1221,22 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._food_items_group.empty()  # remove all previous food item sprites from the group
         self._food_items_group.add(*self._food_items)
         assert len(self._food_items) == len(self._food_items_group)
+
+        # init landmarks:
+        if self._init_landmarks_positions is not None:
+            self._landmarks_group.empty()
+            if is_color(self._landmarks_colors):
+                landmarks_colors = [self._landmarks_colors] * len(self._init_landmarks_positions)
+            else:
+                assert len(self._landmarks_colors) == len(self._init_landmarks_positions)
+                landmarks_colors = self._landmarks_colors
+            assert len(landmarks_colors) == len(self._init_landmarks_positions), (
+                len(landmarks_colors), len(self._init_landmarks_positions))
+            landmarks = [LandMark(pos, self._landmark_size, col, env=self)
+                         for pos, col in zip(self._init_landmarks_positions, landmarks_colors)]
+            self._landmarks_group.add(*landmarks)
+            assert len(self._init_landmarks_positions) == len(self._landmarks_group)
+
 
         # init field of view of the agent:
         # # init vision points

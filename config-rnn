@@ -11,10 +11,11 @@ reset_on_extinction    = False
 [DefaultGenome]
 # network parameters
 # --------------------------------------
-num_inputs              = 84
+num_inputs              = 91
 # agent_size,vision_depth,vision_field_angle,vision_resolution
 # .075  .3  135 15      = 390
 # .075  .3  135 7       = 84
+# .075  .2  135 7       = 91
 # --------------------------------------
 # num_hidden              = 0
 num_hidden              = 10

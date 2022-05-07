@@ -129,15 +129,15 @@ if __name__ == '__main__':
     #                       # food_color=COLORS['black'], outside_color=COLORS['gray'], background_color=COLORS['white'],
     #                       food_color=COLORS['white'], outside_color=COLORS['gray'], background_color=COLORS['black'],
     #                       )
-    env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.075, food_size=.0375,
-                          n_food_items=10, max_steps=500,
-                          rotation_step=10., forward_step=.01,
-                          # vision_depth=.3, vision_field_angle=135, vision_resolution=15,
-                          vision_depth=.3, vision_field_angle=135, vision_resolution=7,
-                          # food_color=COLORS['black'], outside_color=COLORS['black'], background_color=COLORS['white'],
-                          # food_color=COLORS['black'], outside_color=COLORS['gray'], background_color=COLORS['white'],
-                          # food_color=COLORS['white'], outside_color=COLORS['gray'], background_color=COLORS['black'],
-                          )
+    # env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.075, food_size=.0375,
+    #                       n_food_items=10, max_steps=500,
+    #                       rotation_step=10., forward_step=.01,
+    #                       # vision_depth=.3, vision_field_angle=135, vision_resolution=15,
+    #                       vision_depth=.3, vision_field_angle=135, vision_resolution=7,
+    #                       # food_color=COLORS['black'], outside_color=COLORS['black'], background_color=COLORS['white'],
+    #                       # food_color=COLORS['black'], outside_color=COLORS['gray'], background_color=COLORS['white'],
+    #                       # food_color=COLORS['white'], outside_color=COLORS['gray'], background_color=COLORS['black'],
+    #                       )
 
     # env = RadialArmMaze(3, 1., window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
     # env = RadialArmMaze(9, window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
@@ -152,6 +152,27 @@ if __name__ == '__main__':
     #                     window_size=200, seed=42, agent_size=.075, food_size=.05, n_food_items=1, max_steps=400,
     #                     init_agent_position=(.5, .1), init_food_positions=((.9, .5),),
     #                     vision_depth=.2, vision_field_angle=135, vision_resolution=8)
+    corridor_width = .2
+    landmark_size = .075
+    lm_dist = corridor_width + landmark_size * 1.10
+    lm_bord = landmark_size / 2 + .1
+    env = RadialArmMaze(corridor_width=corridor_width,
+                        window_size=200, agent_size=.075, food_size=.05, n_food_items=1, max_steps=400,
+                        vision_depth=.2, vision_field_angle=135, vision_resolution=7,
+                        random_init_agent_position=((.5, .1), (.5, .9), (.1, .5),),
+                        init_food_positions=((.9, .5),),
+                        landmark_size=landmark_size,
+                        init_landmarks_positions=((.5 - lm_dist / 2, lm_bord), (.5 + lm_dist / 2, lm_bord),
+                                                  (.5 - lm_dist / 2, 1. - lm_bord), (.5 + lm_dist / 2, 1. - lm_bord),
+                                                  (lm_bord, .5 - lm_dist / 2), (lm_bord, .5 + lm_dist / 2),
+                                                  (1. - lm_bord, .5 - lm_dist / 2), (1. - lm_bord, .5 + lm_dist / 2),),
+                        landmarks_colors=(
+                            np.asarray((0, 0, 255), dtype=np.uint8), np.asarray((0, 0, 255), dtype=np.uint8),
+                            np.asarray((0, 0, 191), dtype=np.uint8), np.asarray((0, 0, 191), dtype=np.uint8),
+                            np.asarray((0, 0, 127), dtype=np.uint8), np.asarray((0, 0, 127), dtype=np.uint8),
+                            np.asarray((0, 0,  63), dtype=np.uint8), np.asarray((0, 0,  63), dtype=np.uint8),
+                        ),
+                        )
 
     logging.info(f"Env: {type(env).__qualname__}")
     logging.info(f"observation_space: "
@@ -161,22 +182,24 @@ if __name__ == '__main__':
     with open(os.path.join(logging_dir, LOG_TAG + '_env.pickle'), "wb") as f:
         pickle.dump(env, f)
     # check pickle env:  # todo: move in tests
+    def assert_init_params_equal(_init_params_1, _init_params_2):
+        if not isinstance(_init_params_1, dict):
+            _init_params_1 = _init_params_1.arguments
+        if not isinstance(_init_params_2, dict):
+            _init_params_2 = _init_params_2.arguments
+        assert _init_params_1.keys() == _init_params_2.keys()
+        for k, v in _init_params_1.items():
+            if isinstance(v, (np.ndarray, list, tuple)):
+                np.array_equal(v, _init_params_2[k])
+            elif isinstance(v, dict):
+                assert_init_params_equal(v, _init_params_2[k])
+            else:
+                assert v == _init_params_2[k]
     with open(os.path.join(logging_dir, LOG_TAG + '_env.pickle'), "rb") as f:
         _loaded_env = pickle.load(f)
         assert type(_loaded_env) is type(env)
         # assert _loaded_env._init_params == env._init_params
-        assert _loaded_env._init_params.arguments.keys() == env._init_params.arguments.keys()
-        for k, v in _loaded_env._init_params.arguments.items():
-            if isinstance(v, np.ndarray):
-                np.array_equal(env._init_params.arguments[k], v)
-            elif isinstance(v, dict):
-                for k_, v_ in v.items():
-                    if isinstance(v_, np.ndarray):
-                        np.array_equal(env._init_params.arguments[k][k_], v_)
-                    else:
-                        assert env._init_params.arguments[k][k_] == v_
-            else:
-                assert env._init_params.arguments[k] == v
+        assert_init_params_equal(env._init_params, _loaded_env._init_params)
     # check env:
     #check_env(env)  # todo: move in tests
     random.seed()  # reseed, because check_env(env) sets always the same random.seed
