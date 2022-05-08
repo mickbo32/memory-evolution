@@ -159,6 +159,10 @@ if __name__ == '__main__':
     env = RadialArmMaze(corridor_width=corridor_width,
                         window_size=200, agent_size=.075, food_size=.05, n_food_items=1, max_steps=400,
                         vision_depth=.2, vision_field_angle=135, vision_resolution=7,
+                        agent_color=COLORS['cyan'],
+                        background_color=np.asarray((0, 0, 0), dtype=np.uint8),
+                        outside_color=np.asarray((255, 0, 0), dtype=np.uint8),
+                        food_color=np.asarray((0, 255, 0), dtype=np.uint8),
                         random_init_agent_position=((.5, .1), (.5, .9), (.1, .5),),
                         init_food_positions=((.9, .5),),
                         landmark_size=landmark_size,
@@ -227,12 +231,16 @@ if __name__ == '__main__':
     Phenotype = RnnNeatAgent
 
     # set Phenotype attributes (overwrite default values, e.g. fitness and evaluate_agent params):
-    Phenotype.fitness_func = memory_evolution.evaluate.FitnessRewardAndSteps(5., 5., normalize_weights=False)
-    Phenotype.eval_num_episodes = 2
-    Phenotype.eval_episodes_aggr_func = 'min'
+    # Phenotype.fitness_func = memory_evolution.evaluate.FitnessRewardAndSteps(5., 5., normalize_weights=False)
+    # Phenotype.eval_num_episodes = 2
+    # Phenotype.eval_episodes_aggr_func = 'min'
     # Phenotype.fitness_func = memory_evolution.evaluate.FitnessRewardAndSteps(4., 6., normalize_weights=False)
     # Phenotype.eval_num_episodes = 5
     # Phenotype.eval_episodes_aggr_func = 'median'
+    # # allocentric RadialArmMaze:
+    Phenotype.fitness_func = memory_evolution.evaluate.FitnessRewardAndSteps(4., 6., normalize_weights=False)
+    Phenotype.eval_num_episodes = 5
+    Phenotype.eval_episodes_aggr_func = 'min'
 
     # dump Phenotype for later use:
     with open(os.path.join(logging_dir, LOG_TAG + '_phenotype.pickle'), "wb") as f:

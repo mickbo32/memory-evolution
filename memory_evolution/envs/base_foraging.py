@@ -349,7 +349,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
     and it should be called ``self._compute_and_set_valid_positions(platform)`` to compute
     the correct valid positions for the new class.
     """
-    metadata = {'render.modes': ['human', 'human+save[save_dir]', 'save[save_dir]']}
+    metadata = {'render.modes': ['human', 'human+save[save_dir]', 'save[save_dir]'
+                                 'human+observation', 'human+observation+save[save_dir]', 'save[save_dir]+observation']}
 
     def __new__(cls, *args, **kwargs):
         """Constructor used to save init values used during construction and initialization of this object."""
@@ -578,9 +579,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
         distance_points_at_same_depth = vision_step
         gamma = math.degrees(2 * math.asin((distance_points_at_same_depth / 2)
                                            / (self._vision_depth * reference_depth)))
-        self.vision_field_n_angles = int(self._vision_field_angle / gamma)
+        self._vision_field_n_angles = int(self._vision_field_angle / gamma)
         # print('vision:', self._vision_depth, self._vision_field_angle, self._vision_resolution,
-        #       vision_step, gamma, self.vision_field_n_angles)
+        #       vision_step, gamma, self._vision_field_n_angles)
         self._max_steps = max_steps
         self._fps = 0 if fps is None else fps
         self._seed = seed
@@ -628,7 +629,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._food_items_group = pg.sprite.Group()
         self._landmarks_group = pg.sprite.Group()
         self._env_img = None  # todo: make state (env_state) an object
-        self.__get_observation_points_cache = {}
+        self.__episode_cache = {}
         self._food_items_collected = None
 
         seeds: np.ndarray = self._seedsequence.generate_state(4)  # dtype: numpy.uint32
@@ -642,7 +643,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                                        seed=seeds[0])  # [rotation, forward motion]
         self.observation_space = spaces.Box(low=0, high=255,
                                             shape=(self._vision_resolution,
-                                                   self.vision_field_n_angles,
+                                                   self._vision_field_n_angles,
                                                    1),
                                             dtype=np.uint8,
                                             seed=seeds[1])
@@ -746,6 +747,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # Rendering:
         self._rendering = False  # rendering never used
         self._rendering_reset_request = True  # ask the rendering engine to reset the screen
+        self._rendering_mode = None
+        self._rendering_observation_pos = None
+        self._rendering_observation_size = None
+
         # init pygame module:
         pg_init_ret = pg.init()
         logging.debug(f"pg.init() returned: {pg_init_ret}")
@@ -850,6 +855,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
     def outside_color(self):
         return self._outside_color
 
+    @property
+    def vision_field_n_angles(self):
+        return self._vision_field_n_angles
+
     @staticmethod
     def __get_vision_point_transparency(point_win_radius, vision_win_step):
         transparency = .8  # base
@@ -920,7 +929,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
             self.observation_space.seed(seeds[1])
             self.env_space.seed(seeds[2])
         self._step_count = 0
-        self.__get_observation_points_cache = {}  # empty observation cache
+        self.__episode_cache = {}  # empty episode cache
         self.t = 0
         self._food_items_collected = 0
         if not self.__has_been_ever_reset:
@@ -973,6 +982,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
         # ask the rendering engine to reset the screen:
         self._rendering_reset_request = True
+        self._rendering_observation_pos = None
+        self._rendering_observation_size = None
 
         self.debug_info['reset']['running'] = False
         if not return_info:
@@ -984,11 +995,11 @@ class BaseForagingEnv(gym.Env, MustOverride):
         """Overrides the base method.
 
         Args:
-            mode: a string containing 'human', or 'save[save_dir]'
-                where save_dir is a path, or both separated by a '+';
-                in 'save[save_dir]' mode, save_dir will be created if
+            mode: a string containing 'human', or 'save[save_dir]' where save_dir is a path,
+                or 'observation', or any combination of them separated by a '+';
+                in 'save[save_dir]' mode, `save_dir` will be created if
                 it doesn't exist, if it does exist an exception will
-                be thrown.
+                be thrown; with observation
         """
         logging.debug('Rendering')
         self.debug_info['render']['running'] = True
@@ -1002,44 +1013,113 @@ class BaseForagingEnv(gym.Env, MustOverride):
             # # init pygame module:
             # pg.init()  # it is done only if self.render() is called at least once (see self.render() method).
 
+        if not isinstance(mode, str):
+            raise TypeError(f"'mode' should be a str, got {type(mode)} instead.")
+        if mode == 'human':
+            mode_human = True
+            mode_observation = False
+            mode_save = None
+        else:
+            modes = mode.split('+')
+            mode_human = 'human' in modes  # re.search(r'^(?:.*\+)?human(?:\+.*)?$', mode)
+            mode_observation = 'observation' in modes
+            mode_save = re.search(r'^(?:.*\+)?save\[(?P<save_dir>.*)](?:\+.*)?$', mode)
+            if mode_observation:
+                if not (mode_human or mode_save):
+                    raise ValueError("rendering: cannot render only observation mode, "
+                                     "add (+) at least one among human/save[save_dir]."
+                                     " Example: mode='human+observation'")
+            if not (mode_human or mode_save):
+                raise ValueError("rendering: cannot render, "
+                                 "add (+) at least one mode among human/save[save_dir]."
+                                 " Example: mode='human+observation'")
+
         # reset screen if asked:
         if self._rendering_reset_request:
             self._rendering_reset_request = False
+            self._rendering_mode = mode
             # init rendering engine:
             # init main screen (init window if game in human mode):
-            if mode == 'human' or re.search(r'^(?:.*\+)?human(?:\+.*)?$', mode):
+            assert isinstance(self._window_size, tuple), type(self._window_size)
+            assert len(self._window_size) == 2, self._window_size
+            window_size = self._window_size
+            if mode_observation:
+                # k = int(math.ceil(.10 * self._vision_depth))
+                # vd = int(math.ceil(
+                #     self._vision_depth * get_env2win_scaling_factor(self._window_size, self._env_size)))
+                # window_size = (
+                #     self._window_size[0] + 2 * (vd + k),
+                #     max(self._window_size[1],
+                #         (2 if self._vision_field_angle > 180 else 1) * (vd + k))
+                # )
+                # self._rendering_observation_pos = (self._window_size[0] + k, k)
+                window_size = (
+                    int(math.ceil(self._window_size[0] * (5 / 3))),
+                    self._window_size[1],
+                )
+                _vision_size = np.asarray((self._vision_field_n_angles, self._vision_resolution))  # x, y
+                print(_vision_size)
+                offset = .1 * self._window_size[0] * (2 / 3)
+                self._rendering_observation_size = (_vision_size / _vision_size[0] * (self._window_size[0] * (2 / 3) - 2 * offset)).astype(int)
+                self._rendering_observation_pos = (self._window_size[0] + offset, offset)
+                print(self._rendering_observation_size)
+            if mode_human:
                 # logo = pg.image.load("logo32x32.png")
                 # pg.display.set_icon(logo)
                 pg.display.set_caption(f'{type(self).__qualname__}')
                 # init screen:
-                self._screen = pg.display.set_mode(self._window_size)
+                self._screen = pg.display.set_mode(window_size)
             else:
-                self._screen = pg.Surface(self._window_size, pg.SRCALPHA)
+                self._screen = pg.Surface(window_size, pg.SRCALPHA)
             self._screen.blit(self._background_img, (0, 0))
 
-
             # if 'save' mode, init save_dir:
-            match = re.search(r'^(?:.*\+)?save\[(.*)](?:\+.*)?$', mode)
-            if match:
-                os.makedirs(match.group(1), exist_ok=False)
+            if mode_save:
+                os.makedirs(mode_save['save_dir'], exist_ok=False)
+        else:
+            assert self._rendering_mode is not None
+            if self._rendering_mode != mode:
+                raise RuntimeError("Changing rendering mode during an episode is not allowed,"
+                                   " call reset() before changing mode."
+                                   f"\n\t(current mode: {self._rendering_mode}; mode asked: {mode})")
 
+        # if you need a background filled:
+        if mode_observation:
+            # self._screen.fill((0, 0, 0))
+            self._screen.fill((20, 20, 20))  # TODO: you can update only the rect of _env_img and _obs_img (the rest can be flipped once and it is okay)
+            pass
+
+        # render env:
         self._render_env(self._screen)
 
+        # render observation:
+        if mode_observation:
+            obs = self._get_observation()
+            assert obs.ndim == 3, obs.ndim
+            if obs.shape[2] == 1:
+                # if obs is black&white with one channel, convert obs in 3 channels to be drawn
+                obs = np.zeros((obs.shape[0], obs.shape[1], 3), dtype=obs.dtype) + obs
+            # convert obs from np.ndarray to pg.Surface:
+            obs_img = convert_image_to_pygame(obs)
+            # increase size of the img:
+            obs_img = pg.transform.scale(obs_img, self._rendering_observation_size)
+            # # if self._inverted_color_rendering is True, invert obs twice to have the real vision:
+            # if self._inverted_color_rendering:
+            #     invert_colors_inplace(obs_img)  # FIXME: non funziona con obs_img
+            # blit observation in the screen:
+            self._screen.blit(obs_img, self._rendering_observation_pos)
+
         # flip/update the screen:
-        if mode == 'human' or re.search(r'^(?:.*\+)?human(?:\+.*)?$', mode):
+        if mode_human:
             if self._inverted_color_rendering:
                 invert_colors_inplace(self._screen)
-            pg.display.flip()  # pg.display.update()
+            pg.display.flip()  # pg.display.update()  # TODO: you can update only the rect of _env_img and _obs_img (the rest can be flipped once and it is okay)
 
         # if in 'save' mode, save frames of the main screen.
-        if mode != 'human':
-            # you could also use mode.split('+') and then check separately the modes provided.
-            match = re.search(r'^(?:.*\+)?save\[(.*)](?:\+.*)?$', mode)
-            if match:
+        if not mode_human:
+            if mode_save:
                 pg.image.save(self._screen,
-                              os.path.join(match.group(1), f"frame_{self._step_count}.jpg"))
-            elif re.search(r'^(?:.*\+)?human(?:\+.*)?$', mode):
-                pass
+                              os.path.join(mode_save['save_dir'], f"frame_{self._step_count}.jpg"))
             else:
                 raise ValueError(f"mode={mode!r} is not a valid rendering mode.")
 
@@ -1377,19 +1457,27 @@ class BaseForagingEnv(gym.Env, MustOverride):
             ``observation_noise`` argument was provided when the environment
             was constructed.
         """
-        points = self._get_observation_points()
-        obs = np.empty((*self.observation_space.shape[:-1], self._n_channels), dtype=self.observation_space.dtype)
-        for i in range(self.observation_space.shape[0]):
-            for j in range(self.observation_space.shape[1]):
-                obs[i, j] = self._get_point_color(points[i][j])
-        obs = black_n_white(obs)
-        self.debug_info['_get_observation']['obs'] = obs
-        return obs
+        if self.__episode_cache.get('_get_observation__last_step_count', None) != self._step_count:
+            self.__episode_cache['_get_observation__last_step_count'] = self._step_count
+
+            points = self._get_observation_points()
+            obs = np.empty((*self.observation_space.shape[:-1], self._n_channels), dtype=self.observation_space.dtype)
+            for i in range(self.observation_space.shape[0]):
+                for j in range(self.observation_space.shape[1]):
+                    obs[i, j] = self._get_point_color(points[i][j])
+            obs = black_n_white(obs)
+            self.debug_info['_get_observation']['obs'] = obs
+
+            self.__episode_cache['_get_observation'] = obs
+        # else:
+        #     print('cache hit')
+        return self.__episode_cache['_get_observation']
 
     def _get_observation_points(self) -> np.ndarray:
+        assert self.__has_been_ever_reset
 
-        if self.__get_observation_points_cache.get('last_step_count', None) != self._step_count:
-            self.__get_observation_points_cache['last_step_count'] = self._step_count
+        if self.__episode_cache.get('_get_observation_points__last_step_count', None) != self._step_count:
+            self.__episode_cache['_get_observation_points__last_step_count'] = self._step_count
 
             # Create a segment of length self._vision_depth from the agent center (offset self._vision_start)
             #   with self._vision_resolution points,
@@ -1406,7 +1494,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
             line = np.column_stack((span_x, span_y))
             assert len(line) == self._vision_resolution
 
-            # Rotate the segment for self.vision_field_n_angles times between
+            # Rotate the segment for self._vision_field_n_angles times between
             #   "self._agent.head_direction + self._vision_field_angle / 2" and
             #   "self._agent.head_direction - self._vision_field_angle / 2",
             #   with agent center as rotation origin
@@ -1414,19 +1502,19 @@ class BaseForagingEnv(gym.Env, MustOverride):
             # Compute absolute angles for rotation:
             angles = np.linspace(self._agent.head_direction + self._vision_field_angle / 2,
                                  self._agent.head_direction - self._vision_field_angle / 2,
-                                 num=self.vision_field_n_angles, endpoint=True)
-            assert len(angles) == self.vision_field_n_angles
+                                 num=self._vision_field_n_angles, endpoint=True)
+            assert len(angles) == self._vision_field_n_angles
 
             # Rotate segments and put them in the observation matrix:
-            points = np.empty((self._vision_resolution, self.vision_field_n_angles, 2), dtype=line.dtype)
+            points = np.empty((self._vision_resolution, self._vision_field_n_angles, 2), dtype=line.dtype)
             for j, alpha in enumerate(angles):
                 points[:, j] = transform.rotate(line, alpha, self._agent.pos)
 
-            self.__get_observation_points_cache['points'] = points
+            self.__episode_cache['_get_observation_points'] = points
         # else:
         #     print('cache hit')
 
-        return self.__get_observation_points_cache['points']
+        return self.__episode_cache['_get_observation_points']
 
     @override
     def _get_point_color(self, point):

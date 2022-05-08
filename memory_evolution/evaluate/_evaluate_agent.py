@@ -98,7 +98,7 @@ def evaluate_agent(agent,
         logging.debug(f"temp_dir: {temp_dir!r}")
         logging.debug(f"save_gif_dir: {save_gif_dir!r}")
     episode_str = ''
-    rendering_mode = ''
+    rendering_mode = 'observation+'
     if render:
         rendering_mode += 'human'
     fitnesses = []
