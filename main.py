@@ -238,9 +238,9 @@ if __name__ == '__main__':
     # Phenotype.eval_num_episodes = 5
     # Phenotype.eval_episodes_aggr_func = 'median'
     # # allocentric RadialArmMaze:
-    Phenotype.fitness_func = memory_evolution.evaluate.FitnessRewardAndSteps(4., 6., normalize_weights=False)
+    Phenotype.fitness_func = memory_evolution.evaluate.fitness_func_time_inverse
     Phenotype.eval_num_episodes = 5
-    Phenotype.eval_episodes_aggr_func = 'min'
+    Phenotype.eval_episodes_aggr_func = 'median'
 
     # dump Phenotype for later use:
     with open(os.path.join(logging_dir, LOG_TAG + '_phenotype.pickle'), "wb") as f:

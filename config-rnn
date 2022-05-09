@@ -11,14 +11,16 @@ reset_on_extinction    = False
 [DefaultGenome]
 # network parameters
 # --------------------------------------
-num_inputs              = 91
-# agent_size,vision_depth,vision_field_angle,vision_resolution
-# .075  .3  135 15      = 390
-# .075  .3  135 7       = 84
-# .075  .2  135 7       = 91
+num_inputs              = 273
+# agent_size,vision_depth,vision_field_angle,vision_resolution,vision_channels
+# .075  .3  135 15  1   = 390
+# .075  .3  135 7   1   = 84
+# .075  .2  135 7   1   = 91
+# .075  .2  135 7   3   = 273
 # --------------------------------------
-# num_hidden              = 0
-num_hidden              = 10
+num_hidden              = 0
+# num_hidden              = 5
+# num_hidden              = 10
 num_outputs             = 2
 feed_forward            = False
 # initial_connection      = partial_direct 0.5
@@ -61,8 +63,8 @@ conn_delete_prob        = 0.5
 # connection enable options
 enabled_default         = True
 enabled_mutate_rate     = 0.01
-#enabled_rate_to_false_add = 0.0
-#enabled_rate_to_true_add  = 0.0
+enabled_rate_to_false_add = 0.0
+enabled_rate_to_true_add  = 0.0
 
 # node add/remove rates
 node_add_prob           = 0.2

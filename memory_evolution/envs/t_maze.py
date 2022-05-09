@@ -33,7 +33,7 @@ class TMaze(MazeForagingEnv):
                  **kwargs
                  ) -> None:
 
-        n_channels = 3
+        env_channels = 3
         self._corridor_width = corridor_width
 
         up_right = np.asarray(self._get_env_size(env_size))
@@ -67,7 +67,7 @@ class TMaze(MazeForagingEnv):
         self._update_init_params(['borders', 'window_size', 'env_size'])
 
         assert tuple(up_right) == self._env_size
-        assert n_channels == self._n_channels, self._n_channels
+        assert env_channels == self._env_channels, self._env_channels
 
     @property
     @override

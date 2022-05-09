@@ -50,7 +50,7 @@ class RadialArmMaze(MazeForagingEnv):
             kwargs: additional kwargs used in parent class initialization.
         """
 
-        n_channels = 3
+        env_channels = 3
         if not isinstance(window_size, Real):
             raise TypeError("Allowed square window only, 'window_size' must be a number, the side length.")
         if not isinstance(env_size, Real):
@@ -106,7 +106,7 @@ class RadialArmMaze(MazeForagingEnv):
         self._update_init_params(['platform', 'window_size', 'env_size'])
 
         assert tuple(env_size) == self._env_size
-        assert n_channels == self._n_channels, self._n_channels
+        assert env_channels == self._env_channels, self._env_channels
 
     @property
     @override

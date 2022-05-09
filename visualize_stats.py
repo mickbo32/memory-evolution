@@ -40,7 +40,9 @@ if __name__ == '__main__':
     RENDER = False  # render or just save gif files
     # ---
     # LOAD_AGENT = '8499798_2022-04-25_163845.730764+0000'  # best genome
-    LOAD_AGENT = '8508254_2022-05-04_021025.108389+0000'
+    # LOAD_AGENT = '8508254_2022-05-04_021025.108389+0000'
+    # LOAD_AGENT = '8525497_2022-05-08_144349.993182+0000'  # vision_channels = 1
+    LOAD_AGENT = '8527358_2022-05-09_104749.699383+0000'  # vision_channels = 3
     LOAD_AGENT_DIR = "logs/saved_logs/no-date/logs/"
     N_EPISODES = 2
     LOAD_FROM: AVAILABLE_LOADING_METHODS = 'pickle'
@@ -158,9 +160,10 @@ if __name__ == '__main__':
                               filename_speciation=os.path.join(LOGGING_DIR, LOADED_UTCNOW + "_speciation.png"))
 
     obs_shape = env.observation_space.shape
-    obs_size = reduce(mul, env.observation_space.shape, 1)
+    obs_size = reduce(mul, obs_shape, 1)
     input_nodes = config.genome_config.input_keys
-    assert obs_size == len(input_nodes) == len(agent.phenotype.input_nodes)
+    assert obs_size == len(input_nodes) == len(agent.phenotype.input_nodes), (
+        obs_shape, len(input_nodes), len(agent.phenotype.input_nodes))
     assert input_nodes == agent.phenotype.input_nodes
     agent.set_env(env)
     agent.visualize_genome(agent.genome, view=True, name='Genome',

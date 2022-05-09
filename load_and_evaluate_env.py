@@ -38,11 +38,17 @@ if __name__ == '__main__':
     # ----- Settings -----
     RENDER = False  # render or just save gif files
     # ---
-    LOAD_AGENT = '8492571_2022-04-20_212136.999729+0000'
+    # LOAD_AGENT = '8492571_2022-04-20_212136.999729+0000'
+    LOAD_AGENT = '8525497_2022-05-08_144349.993182+0000'
+    LOAD_AGENT = '8527358_2022-05-09_104749.699383+0000'
     LOAD_AGENT_DIR = "logs/saved_logs/no-date/logs/"
-    N_EPISODES = 2
-    LOAD_FROM: AVAILABLE_LOADING_METHODS = 'checkpoint'
+    # LOAD_FROM: AVAILABLE_LOADING_METHODS = 'checkpoint'
+    LOAD_FROM: AVAILABLE_LOADING_METHODS = 'pickle'
+    N_EPISODES = 3
     LOGGING_DIR = 'logs'
+    # ---
+    # CHECKPOINT_NUMBER = None  # if None, load the last checkpoint
+    CHECKPOINT_NUMBER = None
     # ---
     # override variables if provided as program arguments
     if len(sys.argv) == 1:
@@ -52,15 +58,13 @@ if __name__ == '__main__':
         if len(sys.argv) >= 3:
             LOAD_AGENT_DIR = sys.argv[2]
         elif len(sys.argv) >= 4:
-            N_EPISODES = sys.argv[3]
+            LOAD_FROM = sys.argv[3]
         elif len(sys.argv) >= 5:
-            LOAD_FROM = sys.argv[4]
+            N_EPISODES = sys.argv[4]
     else:
         raise RuntimeError(sys.argv)
 
     assert LOAD_FROM in typing.get_args(AVAILABLE_LOADING_METHODS), LOAD_FROM
-
-    CHECKPOINT_NUMBER = None  # if None, load the last checkpoint
 
     # compute runtime consts:
     LOAD_ENV = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_env.pickle')
@@ -91,8 +95,10 @@ if __name__ == '__main__':
                                           file_handler_now_filename_fmt="log_load_" + LOAD_AGENT + "__now_{utcnow}.log")
     del LOGGING_DIR  # from now on use 'logging_dir' instead.
     logging.info(__file__)
-    # LOADED_UTCNOW = 'loaded_agent_' + LOAD_AGENT + '__now_' + UTCNOW
-    LOADED_UTCNOW = LOAD_AGENT + '_LOADED_AGENT___now_' + UTCNOW
+    LOADED_UTCNOW = LOAD_AGENT
+    if LOAD_FROM == 'checkpoint':
+        LOADED_UTCNOW += f'_checkpoint-{CHECKPOINT_NUMBER}'
+    LOADED_UTCNOW += '_LOADED_AGENT___now_' + UTCNOW
 
     # neat random seeding:
     # random.seed(42)

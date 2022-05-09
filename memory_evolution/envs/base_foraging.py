@@ -499,7 +499,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
             vision_resolution: how many sample to take for each straight line of vision,
                     i.e. the number of observation points will be
                     ``vision_resolution * self.vision_field_n_angles``,
-                    the observation shape can be accessed by ``self.observation_space.shape``.
+                    the vision shape can be accessed by ``self.vision_shape``,
+                    the observation space shape can be accessed by ``self.observation_space.shape``.
             observation_noise: If None, observation is returned as it is. Otherwise, add noise
                     to the observation, in this case ``observation_noise``
                     describes which method to use for noise generation, it should be a Sequence
@@ -548,7 +549,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 ):
             raise TypeError(window_size)
 
-        self._n_channels = 3
+        self._env_channels = 3
+        # self._vision_channels = 1  # vision_channels (change this, 1 or 3)
+        self._vision_channels = 3  # vision_channels (change this, 1 or 3)
         self._env_size = self._get_env_size(env_size)
         self._window_size = (tuple(window_size)
                              if isinstance(window_size, Sequence)
@@ -556,7 +559,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         assert 2 == len(self._env_size) == len(self._window_size)
         check_scaling_factor_across_axes(self._window_size, self._env_size)
         self._env2win_resize_factor = get_env2win_scaling_factor(self._window_size, self._env_size)
-        self._env_img_shape = (self._window_size[1], self._window_size[0], self._n_channels)  # array shape
+        self._env_img_shape = (self._window_size[1], self._window_size[0], self._env_channels)  # array shape
         self._env_img_size = self._window_size  # pygame surface size
         self._n_food_items = n_food_items
         self._rotation_step = rotation_step
@@ -644,7 +647,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self.observation_space = spaces.Box(low=0, high=255,
                                             shape=(self._vision_resolution,
                                                    self._vision_field_n_angles,
-                                                   1),
+                                                   self._vision_channels),
                                             dtype=np.uint8,
                                             seed=seeds[1])
         self.env_space = spaces.Box(low=0, high=255,
@@ -859,6 +862,18 @@ class BaseForagingEnv(gym.Env, MustOverride):
     def vision_field_n_angles(self):
         return self._vision_field_n_angles
 
+    @property
+    def env_channels(self):
+        return self._env_channels
+
+    @property
+    def vision_channels(self):
+        return self._vision_channels
+
+    @property
+    def vision_shape(self):
+        return self._vision_resolution, self._vision_field_n_angles, self._vision_channels
+
     @staticmethod
     def __get_vision_point_transparency(point_win_radius, vision_win_step):
         transparency = .8  # base
@@ -1058,11 +1073,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
                     self._window_size[1],
                 )
                 _vision_size = np.asarray((self._vision_field_n_angles, self._vision_resolution))  # x, y
-                print(_vision_size)
                 offset = .1 * self._window_size[0] * (2 / 3)
                 self._rendering_observation_size = (_vision_size / _vision_size[0] * (self._window_size[0] * (2 / 3) - 2 * offset)).astype(int)
                 self._rendering_observation_pos = (self._window_size[0] + offset, offset)
-                print(self._rendering_observation_size)
             if mode_human:
                 # logo = pg.image.load("logo32x32.png")
                 # pg.display.set_icon(logo)
@@ -1096,7 +1109,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
         if mode_observation:
             obs = self._get_observation()
             assert obs.ndim == 3, obs.ndim
-            if obs.shape[2] == 1:
+            assert obs.shape[2] == self.vision_channels, (obs.shape, self.vision_channels)
+            if self._vision_channels == 1:
                 # if obs is black&white with one channel, convert obs in 3 channels to be drawn
                 obs = np.zeros((obs.shape[0], obs.shape[1], 3), dtype=obs.dtype) + obs
             # convert obs from np.ndarray to pg.Surface:
@@ -1460,14 +1474,20 @@ class BaseForagingEnv(gym.Env, MustOverride):
         if self.__episode_cache.get('_get_observation__last_step_count', None) != self._step_count:
             self.__episode_cache['_get_observation__last_step_count'] = self._step_count
 
-            points = self._get_observation_points()
-            obs = np.empty((*self.observation_space.shape[:-1], self._n_channels), dtype=self.observation_space.dtype)
-            for i in range(self.observation_space.shape[0]):
-                for j in range(self.observation_space.shape[1]):
-                    obs[i, j] = self._get_point_color(points[i][j])
-            obs = black_n_white(obs)
-            self.debug_info['_get_observation']['obs'] = obs
+            assert self.observation_space.dtype == self.env_space.dtype
 
+            points = self._get_observation_points()
+            obs = np.empty((*self.vision_shape[:-1], self._env_channels), dtype=self.observation_space.dtype)
+            for i in range(self.vision_shape[0]):
+                for j in range(self.vision_shape[1]):
+                    obs[i, j] = self._get_point_color(points[i][j])
+            if self._vision_channels != self._env_channels:
+                obs = black_n_white(obs)
+
+            assert obs.dtype == self.observation_space.dtype, (obs.dtype, self.observation_space.dtype)
+            assert obs.shape == self.vision_shape, (obs.shape, self.vision_shape)
+
+            self.debug_info['_get_observation']['obs'] = obs
             self.__episode_cache['_get_observation'] = obs
         # else:
         #     print('cache hit')

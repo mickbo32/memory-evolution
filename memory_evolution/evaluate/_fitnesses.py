@@ -2,6 +2,7 @@ import os.path
 from abc import ABC, abstractmethod
 from collections import defaultdict, Counter
 from collections.abc import Callable, Iterable, Sequence
+import functools
 import logging
 import math
 import multiprocessing
@@ -30,7 +31,55 @@ def fitness_func_null(*, reward, steps, done, env, **kwargs) -> float:
 
 
 def fitness_func_total_reward(*, reward, steps, done, env, **kwargs) -> float:
+    """return total reward"""
     return reward
+
+
+def fitness_func_time_inverse(*, reward, steps, done, env, **kwargs) -> float:
+    """1/T, where T are the timesteps [0,+inf)
+    note: if T == 0: return +inf
+    attrs: min = 0.0;
+    """
+    if steps == 0:
+        return float('inf')
+    return 1. / steps
+fitness_func_time_inverse.min = 0.
+
+
+def fitness_func_time_exp(*, reward, steps, done, env, **kwargs) -> float:
+    """exp(-T), where T are the timesteps [0,+inf)
+    attrs: min = 0.0; max = 1.0;
+    """
+    return math.exp(-steps)
+fitness_func_time_exp.min = 0.
+fitness_func_time_exp.max = 1.
+
+
+def minimize_inverse(f):
+    """decorator to transform a function to minimize in a function to maximize (the returned function),
+    using inverse: returns h := 1/f
+    note: if f(x) == 0: return +inf
+    note: the domain of the new function accepts only non-negative numbers (it raises an error otherwise)
+    """
+    # @functools.wraps(f)
+    def f_maximize(*args, **kwargs):
+        y = f(*args, **kwargs)
+        if y < 0:
+            raise ValueError("the domain of the new function accepts only non-negative numbers")
+        if y == 0:
+            return float('inf')
+        return 1 / y
+    return f_maximize
+
+
+def minimize_exp(f):
+    """decorator to transform a function to minimize in a function to maximize (the returned function),
+    using exp: returns h := exp(-f)
+    """
+    # @functools.wraps(f)
+    def f_maximize(*args, **kwargs):
+        return math.exp(-f(*args, **kwargs))
+    return f_maximize
 
 
 class BaseFitness(Callable):

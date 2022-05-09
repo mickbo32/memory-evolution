@@ -269,7 +269,7 @@ class BaseNeatAgent(BaseAgent, ABC):
                          view=False, filename=None,
                          show_disabled=True, prune_unused=False,
                          node_colors=None, format='sgv',
-                         default_input_node_color: Literal['palette', 'default'] = 'palette',  # default: 'lightgray'
+                         default_input_node_color: Literal['palette', 'default'] = 'default',  # default: 'lightgray'
                          show_palette=True,
                          ):  # 'format' abbreviation: fmt
         """Display the genome."""
@@ -281,13 +281,20 @@ class BaseNeatAgent(BaseAgent, ABC):
         if default_input_node_color == 'palette':
             rankdir = 'LR'
             env = self.get_env()
+            vision_shape = env.vision_shape
+            vision_channels = env.vision_channels
+            assert len(vision_shape) == 3, vision_shape
+            assert vision_channels == vision_shape[2], (vision_channels, vision_shape)
             obs_shape = env.observation_space.shape
-            obs_size = reduce(mul, env.observation_space.shape, 1)
+            assert obs_shape == vision_shape, (obs_shape, vision_shape)  # this actually could be false, if it is false you need to change the code below
+            obs_channels = obs_shape[2]
+            assert obs_channels == 1 or obs_channels == 3, obs_shape
+            obs_size = reduce(mul, obs_shape, 1)
             input_nodes = self.config.genome_config.input_keys
             assert obs_size == len(input_nodes) == len(self.phenotype.input_nodes)
             assert input_nodes == self.phenotype.input_nodes
-            n_rows = env.observation_space.shape[0]
-            n_cols = env.observation_space.shape[1]
+            n_rows = obs_shape[0]
+            n_cols = obs_shape[1]
             palette = np.empty((n_rows, n_cols, 3), dtype=np.uint8)
             indexes = np.empty((n_rows, n_cols), dtype=int)
             _input_node_colors = {}
@@ -301,6 +308,11 @@ class BaseNeatAgent(BaseAgent, ABC):
                     norm_diag = (norm_i + norm_j) / 2
                     palette[i, j] = np.asarray((255 * norm_i, 255 * norm_j, 255 * (1. - norm_diag)), dtype=np.uint8)
                     _input_node_colors[input_nodes[k]] = get_color_str(palette[i, j])
+                    if obs_channels == 3:
+                        k += 1
+                        _input_node_colors[input_nodes[k]] = get_color_str(palette[i, j])
+                        k += 1
+                        _input_node_colors[input_nodes[k]] = get_color_str(palette[i, j])
                     # _input_node_positions[input_nodes[k]] = (j * .5, - i * .5)
                     k += 1
             assert k == len(input_nodes)
@@ -358,6 +370,16 @@ class BaseNeatAgent(BaseAgent, ABC):
             # for o in output_nodes:
             #     rank_hidden[max_rank].append(o)
 
+        order_inputs = False
+        order_outputs = False
+        if default_input_node_color == 'palette':
+            if obs_channels == 1:
+                order_inputs = False
+                order_outputs = False
+            elif obs_channels == 3:
+                order_inputs = True
+                order_outputs = True
+
         node_names = self.node_names
         dot = visualize.draw_net(
             self.config, genome, view=view,
@@ -370,12 +392,13 @@ class BaseNeatAgent(BaseAgent, ABC):
             node_attributes=node_attributes,
             rankdir=rankdir,
             format=format,
-            order_inputs=False,
-            order_outputs=False,
+            order_inputs=order_inputs,
+            order_outputs=order_outputs,
             render=False,
         )
 
-        if default_input_node_color == 'palette':
+        # ordering of nodes:
+        if default_input_node_color == 'palette' and obs_channels == 1:
             dot.graph_attr['compound'] = 'true'
 
             # order by adding invisible edges:
@@ -401,7 +424,7 @@ class BaseNeatAgent(BaseAgent, ABC):
                             name = node_names.get(k, str(k))
                             dot_sub_inputs.node(name, _attributes={'group': 'input_group_' + str(i)})
 
-            # put hidden and output in culsters:
+            # put hidden and output in clusters:
             with dot.subgraph(name='cluster_outputs') as dot_outputs:
                 dot_outputs.attr(rank='same', style='invis')
                 for k in output_nodes:
@@ -543,6 +566,7 @@ class BaseNeatAgent(BaseAgent, ABC):
         # Display the winning genome.
         print('\nBest genome:\n{!s}'.format(winner))
         self.visualize_genome(winner, view=view_best, name='Best Genome', filename=make_filename("winner-genome.gv"),
+                              default_input_node_color='palette',
                               format=image_format)
 
         # Show output of the most fit genome against training data.
