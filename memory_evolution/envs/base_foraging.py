@@ -472,6 +472,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                  outside_color: Sequence[int] = COLORS['red'],  # todo: do background with Texture (not actually needed)
                  landmarks_colors: Union[None, Sequence[int], Sequence[Sequence[int]]] = COLORS['blue'],
                  inverted_color_rendering: bool = True,
+                 vision_channels: Literal[1, 3] = 3,
                  max_steps: Optional[int] = None,
                  fps: Optional[int] = None,
                  seed=None,
@@ -550,8 +551,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
             raise TypeError(window_size)
 
         self._env_channels = 3
-        # self._vision_channels = 1  # vision_channels (change this, 1 or 3)
-        self._vision_channels = 3  # vision_channels (change this, 1 or 3)
+        if vision_channels not in {1, 3}:
+            raise ValueError(f"'vision_channels' should be 1 or 3, got {vision_channels} instead.")
+        self._vision_channels = vision_channels
         self._env_size = self._get_env_size(env_size)
         self._window_size = (tuple(window_size)
                              if isinstance(window_size, Sequence)
@@ -1123,10 +1125,11 @@ class BaseForagingEnv(gym.Env, MustOverride):
             # blit observation in the screen:
             self._screen.blit(obs_img, self._rendering_observation_pos)
 
+        if self._inverted_color_rendering:
+            invert_colors_inplace(self._screen)
+
         # flip/update the screen:
         if mode_human:
-            if self._inverted_color_rendering:
-                invert_colors_inplace(self._screen)
             pg.display.flip()  # pg.display.update()  # TODO: you can update only the rect of _env_img and _obs_img (the rest can be flipped once and it is okay)
 
         # if in 'save' mode, save frames of the main screen.

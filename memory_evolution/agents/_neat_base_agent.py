@@ -193,9 +193,9 @@ class BaseNeatAgent(BaseAgent, ABC):
         assert agent._genome is not None, agent
         assert agent._phenotype is not None, agent
         fitness = evaluate_agent(agent, self.get_env(),
-                                 episodes=self.eval_num_episodes,
-                                 episodes_aggr_func=self.eval_episodes_aggr_func,
-                                 fitness_func=self.fitness_func,
+                                 episodes=type(self).eval_num_episodes,
+                                 episodes_aggr_func=type(self).eval_episodes_aggr_func,
+                                 fitness_func=type(self).fitness_func,  # get the class function, otherwise it will apply self to the future call because it believes it is a method.
                                  render=self._render)
         return fitness
 
