@@ -21,6 +21,7 @@ import memory_evolution
 from memory_evolution.geometry import is_simple_polygon, Pos
 from memory_evolution.utils import convert_image_to_pygame
 from memory_evolution.utils import MustOverride, override
+from memory_evolution.utils import EmptyDefaultValueError, get_default_value
 
 from .base_foraging import BaseForagingEnv, Agent, FoodItem, get_valid_item_positions_mask
 
@@ -126,9 +127,16 @@ class MazeForagingEnv(BaseForagingEnv):
     def _get_observation(self) -> np.ndarray:
         return super()._get_observation()
 
-    def _get_point_color(self, point):
+    def _get_point_color(self, point,
+                         use_env_space=get_default_value(BaseForagingEnv._get_point_color, 'use_env_space'),
+                         use_neighbours=get_default_value(BaseForagingEnv._get_point_color, 'use_neighbours'),
+                         aggregation_func=get_default_value(BaseForagingEnv._get_point_color, 'aggregation_func'),
+                         ):
         # base method it reads the env_img, thus if you update that in the init it is enough.
-        return super()._get_point_color(point)
+        return super()._get_point_color(point,
+                                        use_env_space=use_env_space,
+                                        use_neighbours=use_neighbours,
+                                        aggregation_func=aggregation_func)
 
     def _is_done(self) -> bool:
         return super()._is_done()

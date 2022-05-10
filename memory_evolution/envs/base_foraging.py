@@ -29,6 +29,7 @@ import memory_evolution
 from memory_evolution.geometry import *  # while developing I keep '*', then it will be imported only the stuff used
 from memory_evolution.utils import *  # while developing I keep '*', then it will be imported only the stuff used
 from memory_evolution.utils import MustOverride, override
+from memory_evolution.utils import EmptyDefaultValueError, get_default_value
 
 
 def check_scaling_factor_across_axes(window_size, env_size) -> Real:
@@ -74,7 +75,7 @@ def get_env2win_scaling_factor(window_size, env_size, axis=0) -> Real:
     return window_size[axis] / env_size[axis]
 
 
-def get_point_env2win(point, window_size, env_size
+def get_point_env2win(point, window_size, env_size, raise_if_outside=True,
                       ) -> tuple[int, ...]:
     """Take a point in the environment coordinate system
     and transform it in the window coordinate system (i.e. a pixel).
@@ -85,19 +86,33 @@ def get_point_env2win(point, window_size, env_size
         ' point: {point}; env_size: {env_size}')
     if len(point) != 2:
         raise NotImplementedError(msg_2d_error)
-    if not (0 <= point[0] <= env_size[0] and 0 <= point[1] <= env_size[1]):
-        raise ValueError(msg_point_outside_env_error.format(point=point, env_size=env_size))
+    if raise_if_outside:
+        if not (0 <= point[0] <= env_size[0] and 0 <= point[1] <= env_size[1]):
+            raise ValueError(msg_point_outside_env_error.format(point=point, env_size=env_size))
+    '''
     point = (point[0] * get_env2win_scaling_factor(window_size, env_size, axis=0),
              (env_size[1] - point[1]) * get_env2win_scaling_factor(window_size, env_size, axis=1))
-    # map the borders of env in the correct window pixel:
+    # map the borders of env in the correct window pixel:  # WARNING: this could fail due to floating point precision errors
     if point[0] == window_size[0]:
         point = (point[0] - 1, point[1])
     if point[1] == window_size[1]:
         point = (point[0], point[1] - 1)
     return int(point[0]), int(point[1])  # tuple(int(x) for x in point)
+    '''
+    if point[0] == env_size[0]:
+        # map the borders of env in the correct window pixel:
+        x = window_size[0] - 1
+    else:
+        x = point[0] * get_env2win_scaling_factor(window_size, env_size, axis=0)
+    if point[1] == 0.:
+        # map the borders of env in the correct window pixel:
+        y = window_size[1] - 1
+    else:
+        y = (env_size[1] - point[1]) * get_env2win_scaling_factor(window_size, env_size, axis=1)
+    return int(x), int(y)
 
 
-def get_point_win2env(point, window_size, env_size
+def get_point_win2env(point, window_size, env_size, raise_if_outside=True,
                       ) -> Pos:
     """Take a point in the window coordinate system (i.e. a pixel)
     and transform it in the environment coordinate system.
@@ -110,11 +125,13 @@ def get_point_win2env(point, window_size, env_size
         if not isinstance(x, int):
             TypeError(f"window coordinates should be integers, "
                       f"instead point has a coordinate {type(x)}")
-    if not (0 <= point[0] < window_size[0] and 0 <= point[1] < window_size[1]):
-        raise ValueError(msg_point_outside_env_error)
+    if raise_if_outside:
+        if not (0 <= point[0] < window_size[0] and 0 <= point[1] < window_size[1]):
+            raise ValueError(msg_point_outside_env_error)
     # get the centroid of the pixel:
     point = [x + .5 for x in point]
-    assert 0 <= point[0] < window_size[0] and 0 <= point[1] < window_size[1], (point, window_size)
+    if raise_if_outside:
+        assert 0 <= point[0] < window_size[0] and 0 <= point[1] < window_size[1], (point, window_size)
     point = [point[0] / get_env2win_scaling_factor(window_size, env_size, axis=0),
              (window_size[1] - point[1]) / get_env2win_scaling_factor(window_size, env_size, axis=1)]
     point = Pos(*point)
@@ -472,6 +489,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                  outside_color: Sequence[int] = COLORS['red'],  # todo: do background with Texture (not actually needed)
                  landmarks_colors: Union[None, Sequence[int], Sequence[Sequence[int]]] = COLORS['blue'],
                  inverted_color_rendering: bool = True,
+                 vision_point_radius: float = 0.,
                  vision_channels: Literal[1, 3] = 3,
                  max_steps: Optional[int] = None,
                  fps: Optional[int] = None,
@@ -529,6 +547,14 @@ class BaseForagingEnv(gym.Env, MustOverride):
             outside_color: RGB Sequence of 3 integers in range [0, 255]
             landmarks_colors: list of landmarks colors, should have the same length of
                     ``init_landmarks_positions``.
+            inverted_color_rendering: invert colors when rendering (and just for rendering,
+                    observation is not affected).
+            vision_point_radius: if 0.0, vision points are uni-dimensional, otherwise use
+                    this number as the vision point radius (radius in env space); in this
+                    latter case colors of pixels inside the circle are aggregated together to
+                    get the final color that will be passed as observation point color.
+            vision_channels: number of channels for the vision, if 1 use black&white vision,
+                    if 3 use color vision.
             max_steps: after this number of steps the environment is done, even if no all
                     food items are collected(the ``max_steps``_th step it will return
                     done True); if ``None`` continue forever (done always False).
@@ -560,7 +586,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                              else (window_size, math.ceil(window_size * self._env_size[1] / self._env_size[0])))
         assert 2 == len(self._env_size) == len(self._window_size)
         check_scaling_factor_across_axes(self._window_size, self._env_size)
-        self._env2win_resize_factor = get_env2win_scaling_factor(self._window_size, self._env_size)
+        self._env2win_scaling_factor = get_env2win_scaling_factor(self._window_size, self._env_size)
         self._env_img_shape = (self._window_size[1], self._window_size[0], self._env_channels)  # array shape
         self._env_img_size = self._window_size  # pygame surface size
         self._n_food_items = n_food_items
@@ -579,6 +605,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # self._vision_start = self._agent_size / 2 - self._food_size / 2
         # self._vision_start = min(self._vision_depth, max(0., self._vision_start))
         self._vision_start = self._agent_size / 2
+        if vision_point_radius > 0.:
+            self._vision_start += vision_point_radius
+        logging.debug(f"vision starts at (distance from agent center, env space): {self._vision_start}")
         vision_step = (self._vision_depth - self._vision_start) / self._vision_resolution
         reference_depth = .66
         distance_points_at_same_depth = vision_step
@@ -613,10 +642,15 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._outside_color = outside_color
         self._landmarks_colors = landmarks_colors
 
-        self._vision_point_win_radius = max(self._env2win_resize_factor * min(self._env_size) * .005, 1)
+        self._vision_point_radius = vision_point_radius
+        if vision_point_radius == 0.:
+            self._vision_point_win_radius = max(self._env2win_scaling_factor * min(self._env_size) * .005, 1)
+        else:
+            self._vision_point_win_radius = vision_point_radius * self._env2win_scaling_factor
         self._vision_point_transparency = self.__get_vision_point_transparency(
-            self._vision_point_win_radius, self._env2win_resize_factor * vision_step)
+            self._vision_point_win_radius, self._env2win_scaling_factor * vision_step)
         # self._vision_points_group = pg.sprite.Group()  # all points are the same, I don't care which one goes where, thus the group is sufficient, I don't need an extra list.
+        logging.debug(f"vision point params (env r init, win r, trasp): {(self._vision_point_radius, self._vision_point_win_radius, self._vision_point_transparency)}")
 
         self._platform = Polygon((Point(0, 0), Point(0, self._env_size[1]),
                                   Point(*self._env_size), Point(self._env_size[0], 0)))
@@ -1063,7 +1097,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
             if mode_observation:
                 # k = int(math.ceil(.10 * self._vision_depth))
                 # vd = int(math.ceil(
-                #     self._vision_depth * get_env2win_scaling_factor(self._window_size, self._env_size)))
+                #     self._vision_depth * self._get_env2win_scaling_factor))
                 # window_size = (
                 #     self._window_size[0] + 2 * (vd + k),
                 #     max(self._window_size[1],
@@ -1196,17 +1230,24 @@ class BaseForagingEnv(gym.Env, MustOverride):
             env_size = self._env_size
         return window_size, env_size
 
-    def get_point_env2win(self, point) -> tuple:
+    def get_env2win_scaling_factor(self):
+        return self._env2win_scaling_factor
+
+    def get_point_env2win(self, point,
+                          raise_if_outside=get_default_value(get_point_env2win, 'raise_if_outside')
+                          ) -> tuple:
         """Take a point in the environment coordinate system
         and transform it in the window coordinate system (i.e. a pixel).
         """
-        return get_point_env2win(point, self._window_size, self._env_size)
+        return get_point_env2win(point, self._window_size, self._env_size, raise_if_outside=raise_if_outside)
 
-    def get_point_win2env(self, point) -> Pos:
+    def get_point_win2env(self, point,
+                          raise_if_outside=get_default_value(get_point_win2env, 'raise_if_outside')
+                          ) -> Pos:
         """Take a point in the window coordinate system (i.e. a pixel)
         and transform it in the environment coordinate system.
         """
-        return get_point_win2env(point, self._window_size, self._env_size)
+        return get_point_win2env(point, self._window_size, self._env_size, raise_if_outside=raise_if_outside)
 
     @override
     def _update_env_img(self) -> None:
@@ -1483,7 +1524,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
             obs = np.empty((*self.vision_shape[:-1], self._env_channels), dtype=self.observation_space.dtype)
             for i in range(self.vision_shape[0]):
                 for j in range(self.vision_shape[1]):
-                    obs[i, j] = self._get_point_color(points[i][j])
+                    obs[i, j] = self._get_point_color(
+                        points[i][j],
+                        use_env_space=True,
+                        use_neighbours=self._vision_point_radius)
             if self._vision_channels != self._env_channels:
                 obs = black_n_white(obs)
 
@@ -1540,16 +1584,50 @@ class BaseForagingEnv(gym.Env, MustOverride):
         return self.__episode_cache['_get_observation_points']
 
     @override
-    def _get_point_color(self, point):
+    def _get_point_color(self, point, use_env_space=True, use_neighbours=0., aggregation_func: str = 'max'):
         """Returns the color in the env_img in correspondence of ``point``
-        (``point`` in the env space)."""
-        col = self._outside_color
-        if 0 <= point[0] <= self._env_size[0] and 0 <= point[1] <= self._env_size[1]:
-            col = self._env_img.get_at(
-                get_point_env2win(point, self._window_size, self._env_size)
-            )[:-1]  # discard the alpha value
-            assert len(col) == 3, col
-        return col
+        (``point`` in the env space if ``use_env_space`` is True, otherwise is in window space).
+        If ``use_neighbours`` is a non-zero positive number, use ``aggregation_func``
+        (taken from np module) to aggregate the color of all surrounding points
+        with distance from ``point`` less or equal to ``use_neighbours``
+        (``use_neighbours`` is in **window space metric** (but can be `float`)).
+        """
+        if use_neighbours <= 0.:
+            if use_env_space:
+                point = self.get_point_env2win(point, raise_if_outside=False)  # get window_point
+            col = self._outside_color
+            if 0 <= point[0] < self._window_size[0] and 0 <= point[1] < self._window_size[1]:
+                col = self._env_img.get_at(point)[:-1]  # discard the alpha value
+                assert len(col) == 3, col
+            return col
+        else:
+            radius = use_neighbours
+            if use_env_space:
+                env_point = point
+                env_radius = radius
+                # get window point and radius
+                point = self.get_point_env2win(point, raise_if_outside=False)
+                radius *= self._env2win_scaling_factor
+            else:
+                # get env point and radius
+                env_point = self.get_point_win2env(point, raise_if_outside=False)
+                env_radius = radius / self._env2win_scaling_factor
+            assert len(point) == 2, point
+            assert isinstance(point, tuple), (type(point), point)
+            assert isinstance(point[0], int), (type(point[0]), point[0], point)
+            assert isinstance(point[1], int), (type(point[1]), point[1], point)
+
+            colors = []
+            for x in range(point[0] - math.floor(radius), point[0] + math.ceil(radius) + 1):
+                for y in range(point[1] - math.floor(radius), point[1] + math.ceil(radius) + 1):
+                    pixel = (x, y)
+                    env_p = self.get_point_win2env(pixel, raise_if_outside=False)
+                    if is_point_in_circle(env_p, radius=env_radius, origin=env_point):
+                        colors.append(self._get_point_color(pixel, use_env_space=False, use_neighbours=0.))
+            assert colors  # colors should at least contain the color of point itself
+            colors = np.asarray(colors)
+            col = getattr(np, aggregation_func)(colors, axis=0)
+            return col
 
     @override
     def _is_done(self) -> bool:
