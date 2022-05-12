@@ -2,6 +2,7 @@ from copy import deepcopy
 import os
 from collections import defaultdict, Counter
 from collections.abc import Iterable, Sequence
+import functools
 from functools import reduce
 import inspect
 import logging
@@ -187,7 +188,7 @@ class CircleItem(pg.sprite.Sprite):
     """
 
     def __init__(self, pos, size: Real, color,
-                 env):
+                 env, empty=False):
         """
 
         Args:
@@ -195,6 +196,7 @@ class CircleItem(pg.sprite.Sprite):
             size: the item diameter.
             env: environment which own the object.
             color: color of the item.
+            empty: draw only the border
         """
         # Call the parent class (Sprite) constructor
         super().__init__()
@@ -207,7 +209,12 @@ class CircleItem(pg.sprite.Sprite):
         # Create an image of the agent, and fill it with a color.
         # This could also be an image loaded from the disk.
         self.image = pg.Surface((self.size_on_screen, self.size_on_screen), pg.SRCALPHA)
-        pg.draw.circle(self.image, self.color, (self.radius_on_screen, self.radius_on_screen), self.radius_on_screen)
+        if empty:
+            pg.draw.circle(self.image, self.color, (self.radius_on_screen, self.radius_on_screen),
+                           self.radius_on_screen, width=1)
+        else:
+            pg.draw.circle(self.image, self.color, (self.radius_on_screen, self.radius_on_screen),
+                           self.radius_on_screen, width=0)
 
         # Fetch the rectangle object that has the dimensions of the image
         # Update the position of this object by setting the values of rect.x and rect.y
@@ -219,7 +226,8 @@ class CircleItem(pg.sprite.Sprite):
         #       (self.radius_on_screen, self.radius_on_screen), self.radius_on_screen)
         # print(convert_pg_mask_to_array(self.mask))
         assert self.mask.get_at((0, 0)) == 0
-        assert self.mask.get_at((self.radius_on_screen, self.radius_on_screen)) == 1
+        if not empty:
+            assert self.mask.get_at((self.radius_on_screen, self.radius_on_screen)) == 1
 
         self.pos = pos  # this updates also self.win_pos and self.rect.center
         self._self_str_properties = [self.pos, self._size]
@@ -322,14 +330,14 @@ class Agent(CircleItem):
 class FoodItem(CircleItem):
     """Rewarding (maybe, not actual reward, but increase in agent life span) food items."""
 
-    def __init__(self, pos, size: Real, color, env):
+    def __init__(self, pos, size: Real, color, env, empty=False):
         """
 
         Args:
             pos: a point representing the position of the food item.
             size: the food item diameter.
         """
-        super().__init__(pos, size, color=color, env=env)
+        super().__init__(pos, size, color=color, env=env, empty=empty)
         # self._self_str_properties.append(NOTHING)
         # self._self_repr_properties.append(NOTHING)
 
@@ -491,6 +499,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                  inverted_color_rendering: bool = True,
                  vision_point_radius: float = 0.,
                  vision_channels: Literal[1, 3] = 3,
+                 food_visible: bool = True,
                  max_steps: Optional[int] = None,
                  fps: Optional[int] = None,
                  seed=None,
@@ -555,6 +564,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
                     get the final color that will be passed as observation point color.
             vision_channels: number of channels for the vision, if 1 use black&white vision,
                     if 3 use color vision.
+            food_visible: if True, food items are visible by the agent, otherwise they are not
+                    (in this latter case they are used only as rewarding positions for the
+                    agents if it steps on them).
             max_steps: after this number of steps the environment is done, even if no all
                     food items are collected(the ``max_steps``_th step it will return
                     done True); if ``None`` continue forever (done always False).
@@ -621,6 +633,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._seed = seed
         self._seedsequence = SeedSequence(self._seed)
         self._inverted_color_rendering = inverted_color_rendering
+        self._food_visible = food_visible
 
         # static inertia in movement:
         # static friction when starting moving from still position
@@ -798,6 +811,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
         # Other control variables:
         self.__has_been_ever_reset = False
+        self.__is_first_reset_ever = True
 
     def _compute_and_set_valid_positions(self, platform):
         """Call this method in self.__init__()
@@ -999,6 +1013,12 @@ class BaseForagingEnv(gym.Env, MustOverride):
             assert hasattr(self, '_valid_agent_positions'), msg
             assert hasattr(self, '_valid_food_item_positions'), msg
 
+            # init self._env_img
+            # just create a plain self._env_img of the same size of self._background_img (init environment space):
+            self._env_img = self._background_img.copy()  # .convert()  # create a copy in the fastest format for blitting
+            assert self._env_img.get_size() == self._env_img_size, (
+                self._env_img.get_size(), self._env_img_size)
+
             # valid item pos check init_agent_position and init_food_positions:
             if self._init_agent_position is not None:
                 pos = self._init_agent_position
@@ -1036,6 +1056,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._rendering_observation_pos = None
         self._rendering_observation_size = None
 
+        self.__is_first_reset_ever = False
         self.debug_info['reset']['running'] = False
         if not return_info:
             return observation
@@ -1120,7 +1141,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 self._screen = pg.display.set_mode(window_size)
             else:
                 self._screen = pg.Surface(window_size, pg.SRCALPHA)
-            self._screen.blit(self._background_img, (0, 0))
+            # self._screen.blit(self._background_img, (0, 0))  # don't need this,
+            #   # background is already blit in the self._env_img which will be blit
+            #   # later when you do self._render_env(self._screen).
 
             # if 'save' mode, init save_dir:
             if mode_save:
@@ -1188,6 +1211,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 warn("Program manually closed. Quitting...")
+                logging.warning("Program manually closed. Quitting...")
                 self.close()
                 sys.exit()
 
@@ -1197,6 +1221,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 warn("Program manually closed. Quitting...")
+                logging.warning("Program manually closed. Quitting...")
                 self.close()
                 sys.exit()
 
@@ -1205,8 +1230,21 @@ class BaseForagingEnv(gym.Env, MustOverride):
         #  A closed file cannot be read or written any more. Any operation, which requires that the file be opened
         #  will raise a ValueError after the file has been closed. Calling close() more than once is allowed.
         self.debug_info['close']['running'] = True
+        logging.debug("Closing environment...")
+
+        # reset attributes:
         self.__has_been_ever_reset = False
+        self.__is_first_reset_ever = True
+
+        # clean the cache of self._get_point_color_with_cache:
+        logging.log(logging.INFO - 1, f"self._get_point_color_with_cache.cache_info(): {self._get_point_color_with_cache.cache_info()}")
+        self._get_point_color_with_cache.cache_clear()
+        logging.log(logging.INFO - 1, "self._get_point_color_with_cache: cache cleaned.")
+
+        # quit pg:
         pg.quit()
+
+        logging.info("Environment closed.")
         self.debug_info['close']['running'] = False
 
     def __get_sizes(self, window_size=None, env_size=None):  # todo: useless, remove it.
@@ -1259,12 +1297,27 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
         Note: to override the background update the attribute
         ``self._background_img`` (pygame surface) in subclass __init__()
+
+        **Important note:**: When ``self._env_img`` change (here when you call ``self._update_env_img()``),
+        the cache of _get_point_color_with_cache needs to be cleaned
+        (by calling ``self._get_point_color_with_cache.cache_clear()``
+        (and log this, so you know what is happening)),
+        otherwise you will get wrong values (always the initial values stored in the cache).
         """
+
+        logging.debug('_update_env_img')
+
+        # clean the cache of self._get_point_color_with_cache:
+        logging.log(logging.INFO - 1, f"self._get_point_color_with_cache.cache_info(): {self._get_point_color_with_cache.cache_info()}")
+        self._get_point_color_with_cache.cache_clear()
+        logging.log(logging.INFO - 1, "self._get_point_color_with_cache: cache cleaned.")
+
         # draw background:    # todo: update instead of rewriting each time
         self._env_img.blit(self._background_img, (0, 0))
 
         # draw food items:
-        self._food_items_group.draw(self._env_img)
+        if self._food_visible:
+            self._food_items_group.draw(self._env_img)
 
         # draw landmarks:
         self._landmarks_group.draw(self._env_img)
@@ -1283,6 +1336,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
         # blit env img:  # todo: update instead of rewriting each time
         screen.blit(self._env_img, (0, 0))
+
+        # if food not visible, it should not be in the _env_img, just draw the border here:
+        if not self._food_visible:
+            self._food_items_group.draw(screen)
 
         # draw agent:
         # agent is drawn later than food items, so that it is shown on top.
@@ -1309,11 +1366,6 @@ class BaseForagingEnv(gym.Env, MustOverride):
     @override
     def _init_state(self) -> None:
         """Create and return a new environment state (used for initialization or reset)"""
-
-        # init environment space:
-        self._env_img = self._background_img.copy()    # .convert()  # create a copy in the fastest format for blitting
-        assert self._env_img.get_size() == self._env_img_size, (
-            self._env_img.get_size(), self._env_img_size)
 
         # get random init positions:
         n_random_positions = 0
@@ -1354,7 +1406,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
         while positions:
             pos = positions.pop()
             assert self.is_valid_position(pos, 'food'), (pos, self._food_size / 2)
-            self._food_items.append(FoodItem(pos, self._food_size, self._food_color, env=self))
+            food_item = FoodItem(pos, self._food_size, self._food_color, env=self,
+                                 empty=(not self._food_visible))
+            self._food_items.append(food_item)
         assert isinstance(self._food_items[0], pg.sprite.Sprite)
         self._food_items_group.empty()  # remove all previous food item sprites from the group
         self._food_items_group.add(*self._food_items)
@@ -1388,7 +1442,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # # self._vision_points_group.add(*vision_points)
 
         # update _env_img: -> pos: & rotate:
-        self._update_env_img()
+        if (self.__is_first_reset_ever  # update _env_img if it is the first reset ever
+                or self._init_food_positions is None  # + update _env_img only if food position change
+        ):
+            self._update_env_img()
 
         # self.debug_info['_init_state']
 
@@ -1486,7 +1543,11 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
         # update _env_img: -> pos: & rotate:
         # since, food items are not moving, env is updated only in _init_state() and when collecting food
-        if food_collected:
+        if food_collected and (self._n_food_items > 1 or self._max_steps is None):
+            # update _env_img only if food is collected
+            #   and not (n_food_items == 1 and self._max_steps is None)
+            #   (if it is 1 and max steps is provided, it will be done and restarted, so no need to update
+            #   (=> so it keeps the cache, more efficient))  todo: revise it if you change the _is_done() method
             self._update_env_img()
 
         # compute reward:
@@ -1585,13 +1646,57 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
     @override
     def _get_point_color(self, point, use_env_space=True, use_neighbours=0., aggregation_func: str = 'max'):
-        """Returns the color in the env_img in correspondence of ``point``
+        """Returns the color in the _env_img in correspondence of ``point``
         (``point`` in the env space if ``use_env_space`` is True, otherwise is in window space).
         If ``use_neighbours`` is a non-zero positive number, use ``aggregation_func``
         (taken from np module) to aggregate the color of all surrounding points
         with distance from ``point`` less or equal to ``use_neighbours``
         (``use_neighbours`` is in **window space metric** (but can be `float`)).
+
+        Note on the implementation:
+        This is a wrapper which uses ``self._get_point_color_with_cache()`` method.
+        It is very useful when use_neighbours > 0.0, and improves speed a lot.
+        If the function is called with the same arguments, then the cached value
+        is returned. If point is in the env space (and use_neighbours > 0.)
+        it is converted to the win space, so it as a reliable discrete tuple
+        and can be hashed to be used as a cache key entry.
+        **Important note:** this works because the environment doesn't change once created,
+        if this assumption is not any more true in your subclass implementation,
+        you should overwrite this function (by using ``self._get_point_color_without_cache()``
+        method instead).
+        **Important note:**: When ``self._env_img`` change (here when you call ``self._update_env_img()``),
+        the cache needs to be cleaned (by calling ``self._get_point_color_with_cache.cache_clear()``
+        (and log this, so you know what is happening
+        (you can also use ``self._get_point_color_with_cache.cache_info()`` to get current
+        info about the current cache before cleaning it))),
+        otherwise you will get wrong values (always the initial values stored in the cache).
         """
+        if use_neighbours <= 0.:
+            # easy, just use normal method:
+            return self._get_point_color_without_cache(point, use_env_space=use_env_space, use_neighbours=use_neighbours,
+                                                       aggregation_func=aggregation_func)
+        else:
+            # expensive method, use version with cache:
+            if use_env_space:
+                point = self.get_point_env2win(point, raise_if_outside=False)  # get window_point
+            return self._get_point_color_with_cache(point, use_neighbours=use_neighbours,
+                                                    aggregation_func=aggregation_func)
+
+    @functools.cache
+    def _get_point_color_with_cache(self, point, use_neighbours, aggregation_func):
+        """See ``self._get_point_color()`` doc-string.
+        Note: ``point`` should be hashable (this is the reason of ``self._get_point_color()`` wrapper).
+        **Important note:**: When ``self._env_img`` change, the cache needs to be cleaned,
+        otherwise you will get wrong values (always the initial values stored in the cache).
+        Note: _get_point_color_with_cache can use only ``use_env_space=False``, otherwise is not possible to
+        create a reliable cache key entry.
+        """
+        assert use_neighbours > 0., use_neighbours
+        return self._get_point_color_without_cache(point, use_env_space=False, use_neighbours=use_neighbours,
+                                                   aggregation_func=aggregation_func)
+
+    def _get_point_color_without_cache(self, point, use_env_space, use_neighbours, aggregation_func):
+        """See ``self._get_point_color()`` doc-string."""
         if use_neighbours <= 0.:
             if use_env_space:
                 point = self.get_point_env2win(point, raise_if_outside=False)  # get window_point
@@ -1623,7 +1728,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
                     pixel = (x, y)
                     env_p = self.get_point_win2env(pixel, raise_if_outside=False)
                     if is_point_in_circle(env_p, radius=env_radius, origin=env_point):
-                        colors.append(self._get_point_color(pixel, use_env_space=False, use_neighbours=0.))
+                        colors.append(
+                            self._get_point_color_without_cache(pixel, use_env_space=False, use_neighbours=0.,
+                                                                aggregation_func=aggregation_func))
             assert colors  # colors should at least contain the color of point itself
             colors = np.asarray(colors)
             col = getattr(np, aggregation_func)(colors, axis=0)

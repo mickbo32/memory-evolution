@@ -73,8 +73,8 @@ if __name__ == '__main__':
 
     # logging settings:
     logging_dir, UTCNOW = set_main_logger(file_handler_all=None,
-                                          stdout_handler=logging.INFO,
-                                          file_handler_now=logging.DEBUG + 5,
+                                          stdout_handler=logging.INFO - 1,  # logging.INFO,
+                                          file_handler_now=logging.DEBUG + 5,  # +5 otherwise the log file is too heavy.
                                           file_handler_now_filename_fmt="log_" + JOB_ID + "_{utcnow}.log")
     logging.info(__file__)
 
@@ -168,7 +168,7 @@ if __name__ == '__main__':
                         agent_color=COLORS['cyan'],
                         background_color=np.asarray((0, 0, 0), dtype=np.uint8),
                         outside_color=np.asarray((255, 0, 0), dtype=np.uint8),
-                        food_color=np.asarray((0, 20, 20), dtype=np.uint8),
+                        food_color=np.asarray((0, 200, 55), dtype=np.uint8), food_visible=False,
                         random_init_agent_position=((.5, .1), (.5, .9), (.1, .5),),
                         init_food_positions=((.9, .5),),
                         landmark_size=landmark_size,
