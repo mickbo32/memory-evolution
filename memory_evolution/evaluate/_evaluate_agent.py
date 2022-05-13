@@ -184,7 +184,10 @@ def evaluate_agent(agent,
                 assert step == env.step_count == env.max_steps
                 assert 0 <= env.food_items_collected < env.n_food_items
 
-        fitness = fitness_func(reward=total_reward, steps=step, done=done, env=env)
+        fitness = fitness_func(
+            reward=total_reward, steps=step, done=done, env=env, agent=agent,
+            info=info,
+        )
         msg = f"fitness: {fitness}"
         # print(msg)
         logging.debug(msg)

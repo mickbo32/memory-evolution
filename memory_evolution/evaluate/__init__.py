@@ -7,6 +7,7 @@ from ._fitnesses import (
     minimize_inverse,
     minimize_exp,
     BaseFitness,
+    FitnessDistanceInverse,
     FitnessRewardAndSteps,
 )
 

@@ -849,6 +849,14 @@ class BaseForagingEnv(gym.Env, MustOverride):
         return self._n_food_items
 
     @property
+    def current_food_items_available(self):
+        return self._n_food_items - self._food_items_collected
+
+    @property
+    def food_items_collected(self):
+        return self._food_items_collected
+
+    @property
     def rotation_step(self):
         return self._rotation_step
 
@@ -882,10 +890,6 @@ class BaseForagingEnv(gym.Env, MustOverride):
     @property
     def max_steps(self):
         return self._max_steps
-
-    @property
-    def food_items_collected(self):
-        return self._food_items_collected
 
     @property
     @override
@@ -923,6 +927,10 @@ class BaseForagingEnv(gym.Env, MustOverride):
     @property
     def vision_shape(self):
         return self._vision_resolution, self._vision_field_n_angles, self._vision_channels
+
+    @property
+    def agent(self):
+        return self._agent
 
     @staticmethod
     def __get_vision_point_transparency(point_win_radius, vision_win_step):
@@ -1056,6 +1064,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._rendering_observation_pos = None
         self._rendering_observation_size = None
 
+        assert self.current_food_items_available == len(self._food_items_group)
         self.__is_first_reset_ever = False
         self.debug_info['reset']['running'] = False
         if not return_info:
@@ -1542,6 +1551,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._food_items = [food for i, food in enumerate(self._food_items) if i not in remove_food]  # O(len(self._food_items)) if isinstance(remove_food, set) else O(len(remove_food) * len(self._food_items))
         assert len(self._food_items) == len(self._food_items_group) == self._n_food_items - self._food_items_collected
         assert food_collected >= 0, food_collected
+        assert self.current_food_items_available == len(self._food_items_group)
 
         # update _env_img: -> pos: & rotate:
         # since, food items are not moving, env is updated only in _init_state() and when collecting food
