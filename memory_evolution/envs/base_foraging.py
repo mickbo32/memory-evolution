@@ -1168,7 +1168,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         if mode_observation:
             obs = self._get_observation()
             assert obs.ndim == 3, obs.ndim
-            assert obs.shape[2] == self.vision_channels, (obs.shape, self.vision_channels)
+            assert obs.shape[2] == self._vision_channels, (obs.shape, self._vision_channels)
             if self._vision_channels == 1:
                 # if obs is black&white with one channel, convert obs in 3 channels to be drawn
                 obs = np.zeros((obs.shape[0], obs.shape[1], 3), dtype=obs.dtype) + obs
@@ -1348,7 +1348,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # draw field of view of the agent:
         # field of view is drawn later than the agent, so that it is shown on top.
         r = self._vision_point_win_radius
-        for pt in self._get_observation_points().reshape((-1, 2)):
+        obs_points = self._get_observation_points()
+        points = obs_points.reshape((-1, 2))
+        for pt in points:
             if 0 <= pt[0] <= self._env_size[0] and 0 <= pt[1] <= self._env_size[1]:
                 pt = self.get_point_env2win(pt)
                 vision_dot_color = COLORS['orange']  # COLORS['blue']
@@ -1679,6 +1681,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
             # expensive method, use version with cache:
             if use_env_space:
                 point = self.get_point_env2win(point, raise_if_outside=False)  # get window_point
+                use_neighbours *= self._env2win_scaling_factor
             return self._get_point_color_with_cache(point, use_neighbours=use_neighbours,
                                                     aggregation_func=aggregation_func)
 
@@ -1690,8 +1693,12 @@ class BaseForagingEnv(gym.Env, MustOverride):
         otherwise you will get wrong values (always the initial values stored in the cache).
         Note: _get_point_color_with_cache can use only ``use_env_space=False``, otherwise is not possible to
         create a reliable cache key entry.
+        **Note:** use window space (``use_neighbours`` must be greater than 0. and should be in window space).
         """
         assert use_neighbours > 0., use_neighbours
+        # assert use_neighbours is in windows space
+        assert use_neighbours == self._vision_point_win_radius, (use_neighbours, self._vision_point_win_radius)
+        assert use_neighbours != self._vision_point_radius, use_neighbours
         return self._get_point_color_without_cache(point, use_env_space=False, use_neighbours=use_neighbours,
                                                    aggregation_func=aggregation_func)
 
