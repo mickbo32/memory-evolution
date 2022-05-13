@@ -152,35 +152,12 @@ if __name__ == '__main__':
     #                     window_size=200, seed=42, agent_size=.075, food_size=.05, n_food_items=1, max_steps=400,
     #                     init_agent_position=(.5, .1), init_food_positions=((.9, .5),),
     #                     vision_depth=.2, vision_field_angle=135, vision_resolution=8)
+
     corridor_width = .2
     landmark_size = .15
     lm_dist = 1. / 2  # corridor_width + landmark_size * 1.10
     lm_bord = 1. / 4  # landmark_size / 2 + .1
-    env = RadialArmMaze(corridor_width=corridor_width,
-                        window_size=200, agent_size=.075, food_size=.05, n_food_items=1, max_steps=400,
-                        # vision_depth=.2, vision_field_angle=135, vision_resolution=7,
-                        # vision_depth=.2, vision_field_angle=135, vision_resolution=4,
-                        # vision_channels=3, vision_point_radius=.025,
-                        # vision_depth=.25, vision_field_angle=135, vision_resolution=3,
-                        # vision_channels=3, vision_point_radius=.05,
-                        vision_depth=.2, vision_field_angle=135, vision_resolution=3,
-                        vision_channels=3, vision_point_radius=.04,
-                        agent_color=COLORS['cyan'],
-                        background_color=np.asarray((0, 0, 0), dtype=np.uint8),
-                        outside_color=np.asarray((255, 0, 0), dtype=np.uint8),
-                        food_color=np.asarray((0, 200, 55), dtype=np.uint8), food_visible=False,
-                        random_init_agent_position=((.5, .1), (.5, .9), (.1, .5),),
-                        init_food_positions=((.9, .5),),
-                        landmark_size=landmark_size,
-                        init_landmarks_positions=((.5 - lm_dist / 2, lm_bord), (.5 + lm_dist / 2, lm_bord),
-                                                  (.5 - lm_dist / 2, 1. - lm_bord), (.5 + lm_dist / 2, 1. - lm_bord),),
-                        landmarks_colors=(
-                            np.asarray((255, 0, 255), dtype=np.uint8), np.asarray((255, 255, 0), dtype=np.uint8),
-                            np.asarray((255, 127, 127), dtype=np.uint8), np.asarray((255, 255, 255), dtype=np.uint8),
-                        ),
-                        )
-
-    # env = TMaze(corridor_width=corridor_width,
+    # env = RadialArmMaze(corridor_width=corridor_width,
     #                     window_size=200, agent_size=.075, food_size=.05, n_food_items=1, max_steps=400,
     #                     # vision_depth=.2, vision_field_angle=135, vision_resolution=7,
     #                     # vision_depth=.2, vision_field_angle=135, vision_resolution=4,
@@ -203,6 +180,18 @@ if __name__ == '__main__':
     #                         np.asarray((255, 127, 127), dtype=np.uint8), np.asarray((255, 255, 255), dtype=np.uint8),
     #                     ),
     #                     )
+    env = TMaze(
+                        corridor_width=corridor_width,
+                        window_size=200, agent_size=.075, food_size=.05, n_food_items=1, max_steps=400,
+                        vision_depth=.2, vision_field_angle=135, vision_resolution=3,
+                        vision_channels=1, vision_point_radius=.04,
+                        agent_color=COLORS['cyan'],
+                        background_color=np.asarray((0, 0, 0), dtype=np.uint8),
+                        outside_color=np.asarray((255, 0, 0), dtype=np.uint8),
+                        food_color=np.asarray((0, 200, 55), dtype=np.uint8), food_visible=False,
+                        random_init_agent_position=((.1, .9), (.5, .1),),
+                        init_food_positions=((.9, .9),),
+                        )
 
     logging.info(f"Env: {type(env).__qualname__}")
     logging.info(f"observation_space: "

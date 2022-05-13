@@ -31,7 +31,7 @@ class RadialArmMaze(MazeForagingEnv):
 
     def __init__(self,
                  arms: int = 4,
-                 corridor_width: Optional[float] = None,  # default: max_corridor_width / 3
+                 corridor_width: Optional[float] = None,
                  window_size: Union[int] = 320,
                  env_size: Union[float] = 1.,
                  **kwargs
@@ -42,7 +42,7 @@ class RadialArmMaze(MazeForagingEnv):
 
         Args:
             arms: number of arms of the radial arm maze.
-            corridor_width: width of each arm corridor.
+            corridor_width: width of each arm corridor (default: max_corridor_width / 3).
             window_size: window_size.
             env_size: env_size.
             kwargs: additional kwargs used in parent class initialization.
