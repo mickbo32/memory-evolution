@@ -4,7 +4,8 @@
 fitness_criterion      = max
 # fitness_criterion      = mean
 fitness_threshold      = 9
-no_fitness_termination = False
+# no_fitness_termination = False
+no_fitness_termination = True
 pop_size               = 250
 reset_on_extinction    = False
 
@@ -20,6 +21,7 @@ num_inputs              = 63
 ## .075  .2  135 4   3   .025    = 84  # this was when vision points start was on the agent border
 # .075  .25 135 3   3   .05     = 63
 # .075  .2  135 3   3   .04     = 63
+# .075  .2  135 3   3   .035     = 63
 # .075  .2  135 4   3   .025    = 108
 # .075  .2  135 3   1   .04     = 21
 # --------------------------------------

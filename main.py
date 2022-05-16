@@ -154,11 +154,11 @@ if __name__ == '__main__':
     #                     vision_depth=.2, vision_field_angle=135, vision_resolution=8)
 
     corridor_width = .2
-    landmark_size = .15
+    landmark_size = .25  # .15
     lm_dist = 1. / 2  # corridor_width + landmark_size * 1.10
     lm_bord = 1. / 4  # landmark_size / 2 + .1
     env = RadialArmMaze(corridor_width=corridor_width,
-                        window_size=200, agent_size=.075, food_size=.05, n_food_items=1, max_steps=200,
+                        window_size=200, agent_size=.075, food_size=.05, n_food_items=1, max_steps=100,
                         # vision_depth=.2, vision_field_angle=135, vision_resolution=7,
                         # vision_depth=.2, vision_field_angle=135, vision_resolution=4,
                         # vision_channels=3, vision_point_radius=.025,
@@ -166,6 +166,8 @@ if __name__ == '__main__':
                         # vision_channels=3, vision_point_radius=.05,
                         vision_depth=.2, vision_field_angle=135, vision_resolution=3,
                         vision_channels=3, vision_point_radius=.04,
+                        # vision_depth=.2, vision_field_angle=135, vision_resolution=3,
+                        # vision_channels=3, vision_point_radius=.035,
                         agent_color=COLORS['cyan'],
                         background_color=np.asarray((0, 0, 0), dtype=np.uint8),
                         outside_color=np.asarray((255, 0, 0), dtype=np.uint8),
