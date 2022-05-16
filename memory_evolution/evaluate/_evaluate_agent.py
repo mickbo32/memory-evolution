@@ -1,7 +1,7 @@
 import os.path
 from abc import ABC, abstractmethod
 from collections import defaultdict, Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 import logging
 import math
 import multiprocessing
@@ -21,18 +21,15 @@ from numpy.random import SeedSequence, default_rng
 import pandas as pd
 
 import memory_evolution
-
-
-# def compute_fitness(total_reward, other_metric, other_metric2) -> float:
-#     fitness = 0.0
-#     return fitness
+from ._fitnesses import fitness_func_total_reward
 
 
 def evaluate_agent(agent,
                    env: gym.Env,
                    episodes: int = 1,
+                   episodes_aggr_func: Literal['min', 'max', 'mean', 'median'] = 'min',
+                   fitness_func: Callable[..., float] = fitness_func_total_reward,
                    max_actual_time_per_episode: Optional[Union[int, float]] = None,
-                   episodes_fitness_aggr_func: Literal['min', 'max', 'mean', 'median'] = 'min',
                    render: bool = False,
                    save_gif: bool = False,
                    save_gif_dir: str = None,
@@ -48,14 +45,19 @@ def evaluate_agent(agent,
         env: a valid gym environment object (it can be an object of a
             subclass of gym.Evn).
         episodes: number of independent episodes that will be run.
+        episodes_aggr_func: function to use to aggregate all the fitness
+            values collected for each single independent episode (default is
+            'min': The genome's fitness is its worst performance across all runs).
+        fitness_func: callable function to compute the fitness of a single episode,
+            this function is called at the end of each episode, it takes **kwargs
+            as arguments, and it should return a float, the fitness of the episode;
+            by default kwargs contains:
+            reward (total reward), steps (timesteps), done, env.
         max_actual_time_per_episode: if ``None`` it will just run until the
             environment is done, otherwise after ``max_actual_time_per_episode``
             seconds the environment will be closed and an error is raised.
             This time do not include the episode reset time, but only the
             episode loop (i.e. steps) time.
-        episodes_fitness_aggr_func: function to use to aggregate all the fitness
-            values collected for each single independent episode (default is
-            'min': The genome's fitness is its worst performance across all runs).
         render: if True, render the environment while evaluating the agent.
         save_gif: if True, save a gif for each episode showing the agent
             in action; if True also the ``save_gif_dir`` argument should
@@ -80,6 +82,11 @@ def evaluate_agent(agent,
         RuntimeError: if ``max_iters_per_episode`` is not ``None`` and
             episode has not finished after ``max_iters_per_episode`` timesteps.
     """
+    if not isinstance(episodes_aggr_func, str):
+        raise TypeError(f"'episodes_aggr_func' should be str, instead got {type(episodes_aggr_func)}")
+    if not isinstance(fitness_func, Callable):
+        raise TypeError(f"'fitness_func' should be Callable, instead got {type(fitness_func)}")
+
     keep_frames = bool(save_gif_dir)
     if save_gif and save_gif_dir is None:
         temp_dir = tempfile.TemporaryDirectory(prefix='frames-')
@@ -91,10 +98,9 @@ def evaluate_agent(agent,
         logging.debug(f"temp_dir: {temp_dir!r}")
         logging.debug(f"save_gif_dir: {save_gif_dir!r}")
     episode_str = ''
-    rendering_mode = ''
+    rendering_mode = 'observation+'
     if render:
         rendering_mode += 'human'
-    time_step = env.time_step  # todo: non serve, basta fare env.t - prev_env_t; togli time_step da env e chiama env.dt
     fitnesses = []
     for i_episode in range(episodes):
         msg = f'Starting episode #{i_episode} ...'
@@ -127,14 +133,11 @@ def evaluate_agent(agent,
         assert env.t == 0., env.t
         start_time_episode = time.perf_counter_ns()
         reset_actual_time = (start_time_episode - start_time_episode_including_reset) / 10 ** 9
-        msg = (
-            f"\n"
-            f"Episode reset took {reset_actual_time} actual seconds."
-        )
-        logging.log(logging.DEBUG + 5, '\n\t' + '\n\t'.join(msg.split('\n')))
+        msg = f"Episode reset took {reset_actual_time} actual seconds."
+        logging.log(logging.DEBUG + 5, '\n\t' + msg)
         # if render:
         #     print(msg, end='\n\n')
-        fitness = 0.0  # food collected
+        total_reward = 0.0
         if render or save_gif:
             # # print(observation)
             env.render(mode=rendering_mode)
@@ -154,7 +157,7 @@ def evaluate_agent(agent,
             observation, reward, done, info = env.step(action)
             if isinstance(env, memory_evolution.envs.BaseForagingEnv):
                 assert env.step_count == step + 1, (env.step_count, step)
-            fitness += reward
+            total_reward += reward
             if render or save_gif:
                 logging.debug(f"Observation hash: {hash(observation.tobytes())}")
                 logging.debug(f"Action hash: {hash(action.tobytes())}")
@@ -169,63 +172,27 @@ def evaluate_agent(agent,
         end_t = env.t
         end_time_episode = time.perf_counter_ns()
         if isinstance(env, memory_evolution.envs.BaseForagingEnv):
-            assert env.food_items_collected == fitness, (env.food_items_collected, fitness)
-            # todo: env should have only basic attributes, don't add unnecessary attributes
-            #  (don't_use unnecessary attributes .time_step, .food_items_collected, etc...,
-            #  use them only for asserts).
-        if isinstance(env, memory_evolution.envs.BaseForagingEnv):
-            assert fitness == int(fitness), (fitness, int(fitness))  # fitness should be an integer at this point
+            assert env.food_items_collected == total_reward, (env.food_items_collected, total_reward)
+            # total_reward should be an integer
+            assert total_reward == int(total_reward), (total_reward, int(total_reward))
 
-            # todo: neat should be able to take tuples as fitness
-
-            # # fitness: (total_reward, agent_distance_from_start):
-            # end_agent_pos = info['state']['agent'].pos
-            # agent_distance_from_start = memory_evolution.geometry.euclidean_distance(first_agent_pos, end_agent_pos)
-            # # print(f"agent_distance_from_start: {agent_distance_from_start}")
-            # logging.debug(f"agent_distance_from_start: {agent_distance_from_start}")
-            # # todo: neat should be able to take tuples as fitness
-            # # fitness = (fitness, agent_distance_from_start)
-            # fitness += agent_distance_from_start / max(env.env_size) * .99
-
-            # # fitness: (total_reward, 1 - timesteps used to get all food items if all food items collected):
-            # if env.food_items_collected == env.n_food_items:
-            #     timesteps_normalized = step / env.max_steps
-            #     # note: the agent could take the last food item in the last timestep
-            #     #   thus, 'timesteps_normalized' could be 1
-            #     # note2: more timesteps is bad, less timestep is good, thus fitness: 1 - 'timesteps_normalized'
-            #     logging.debug(f"timesteps_normalized: {timesteps_normalized};"
-            #                   f" 1-timesteps_normalized: {1 - timesteps_normalized}")
-            #     fitness += 1 - timesteps_normalized
-            # else:
-            #     assert step == env.step_count == env.max_steps
-            #     assert env.food_items_collected < env.n_food_items
-
-            # todo: do a function to calculate fitness given reward, timesteps, done, env (as **kwargs)
-            # Multi-objective_optimization with normalized linear scalarization
-            total_reward = fitness
-            total_reward_normalized = fitness / env.maximum_reward  # normalize total_reward
-            assert 0 <= total_reward_normalized <= 1, total_reward_normalized
-            timesteps_normalized = step / env.max_steps  # normalize timesteps
-            # note: the agent could take the last food item in the last timestep
-            #   thus, 'timesteps_normalized' could be 1
-            # note2: more timesteps is bad, less timestep is good, thus fitness: 1 - 'timesteps_normalized'
-            logging.debug(f"timesteps_normalized: {timesteps_normalized};"
-                          f" 1-timesteps_normalized: {1 - timesteps_normalized}")
-            assert 0 <= timesteps_normalized <= 1, timesteps_normalized
-            fitness = (total_reward_normalized + (1 - timesteps_normalized)) / 2
-            assert 0 <= fitness <= 1, fitness
             if env.food_items_collected == env.n_food_items:
                 assert total_reward == env.food_items_collected == env.n_food_items == env.maximum_reward
                 # note: the agent could take the last food item in the last timestep
-                #   thus, 'timesteps_normalized' could be 1
                 assert 0 <= step == env.step_count <= env.max_steps
             else:
                 assert step == env.step_count == env.max_steps
                 assert 0 <= env.food_items_collected < env.n_food_items
 
-            msg = f"fitness: {fitness}"
-            # print(msg)
-            logging.debug(msg)
+        fitness = fitness_func(
+            reward=total_reward, steps=step, done=done, env=env, agent=agent,
+            info=info,
+        )
+        msg = f"fitness: {fitness}"
+        # print(msg)
+        logging.debug(msg)
+        if not isinstance(fitness, Real):
+            raise TypeError(f"return value of 'fitness_func()' should be float, instead got {type(fitness)}")
         fitnesses.append(fitness)
         if done:
             if isinstance(env, memory_evolution.envs.BaseForagingEnv):
@@ -283,7 +250,7 @@ def evaluate_agent(agent,
                 f" (in {(end_time_episode - start_time_episode) / 10 ** 9} actual seconds).")
     if save_gif and save_gif_dir is None:
         temp_dir.cleanup()
-    final_fitness = getattr(np, episodes_fitness_aggr_func)(fitnesses)
+    final_fitness = getattr(np, episodes_aggr_func)(fitnesses)
     # env.close()  # use it only in main, otherwise it will be closed and
     # opened again each time it is evaluated.
     return final_fitness

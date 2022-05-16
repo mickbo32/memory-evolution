@@ -17,6 +17,7 @@ from . import envs
 from . import evaluate
 from . import geometry
 from . import utils
+from . import visualize
 
 from .evaluate import evaluate_agent
 

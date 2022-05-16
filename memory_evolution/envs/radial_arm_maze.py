@@ -1,5 +1,6 @@
+import logging
 from collections import defaultdict, Counter
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 import math
 from numbers import Number, Real
 from typing import Optional, Union, Any
@@ -30,14 +31,24 @@ class RadialArmMaze(MazeForagingEnv):
 
     def __init__(self,
                  arms: int = 4,
-                 corridor_width: Optional[float] = None,  # default: max_corridor_width / 3
+                 corridor_width: Optional[float] = None,
                  window_size: Union[int] = 320,
                  env_size: Union[float] = 1.,
-                 *args,
                  **kwargs
                  ) -> None:
+        """Radial Arm Maze.
 
-        n_channels = 3
+        Equally spaced arm corridors placed in a radial circular formation with a common junction in the center.
+
+        Args:
+            arms: number of arms of the radial arm maze.
+            corridor_width: width of each arm corridor (default: max_corridor_width / 3).
+            window_size: window_size.
+            env_size: env_size.
+            kwargs: additional kwargs used in parent class initialization.
+        """
+
+        env_channels = 3
         if not isinstance(window_size, Real):
             raise TypeError("Allowed square window only, 'window_size' must be a number, the side length.")
         if not isinstance(env_size, Real):
@@ -45,6 +56,7 @@ class RadialArmMaze(MazeForagingEnv):
         self._radius = env_size / 2
         if arms < 2:
             raise ValueError("'arms' number must be greater or equal to 2")
+        self._arms = arms
         # note: using radians
         max_corridor_angle = 2 * math.pi / arms
         max_corridor_width = 2 * self._radius * math.sin(max_corridor_angle / 2)
@@ -62,7 +74,31 @@ class RadialArmMaze(MazeForagingEnv):
         self._inner_radius = self._corridor_width / 2 / math.sin(self._inner_angle / 2)
         # print([math.degrees(alpha) for alpha in (self._corridor_angle, self._intra_arms_angle, self._inner_angle)])
 
-        up_right = np.asarray(self._get_env_size(env_size))
+        # Build maze:
+        env_size = self._get_env_size(env_size)
+        maze = self.__build_maze(arms, env_size)
+
+        super().__init__(
+            platform=maze,
+            window_size=window_size,
+            env_size=env_size,
+            **kwargs
+        )
+        self._update_init_params(['platform', 'window_size', 'env_size'])
+        assert tuple(env_size) == self._env_size
+        assert env_channels == self._env_channels, self._env_channels
+
+    @property
+    @override
+    def maximum_reward(self):
+        return super().maximum_reward
+
+    @property
+    def arms(self):
+        return self._arms
+
+    def __build_maze(self, arms, env_size):
+        up_right = np.asarray(env_size)
         down_left = np.asarray((0., 0.))
         up_left = np.asarray((0., up_right[1]))
         down_right = np.asarray((up_right[0], 0.))
@@ -88,7 +124,8 @@ class RadialArmMaze(MazeForagingEnv):
         for a in range(arms):
             points.append(corridor_end_point)
             points.append(inner_point)
-            corridor_start_point = transform.rotate(corridor_end_point, self._intra_arms_angle, center, use_radians=True)
+            corridor_start_point = transform.rotate(corridor_end_point, self._intra_arms_angle, center,
+                                                    use_radians=True)
             points.append(corridor_start_point)
             inner_point = transform.rotate(inner_point, self._inner_angle, center, use_radians=True)
             corridor_end_point = transform.rotate(corridor_start_point, self._corridor_angle, center, use_radians=True)
@@ -125,20 +162,9 @@ class RadialArmMaze(MazeForagingEnv):
         assert plg.is_valid, plg.wkt
         assert isinstance(plg.boundary, LineString) and not list(plg.interiors), plg.wkt
 
-        super().__init__(
-            platform=maze,
-            window_size=window_size,
-            env_size=env_size,
-            *args,
-            **kwargs
-        )
-        self._update_init_params(['platform', 'window_size', 'env_size'])
+        return maze
 
-        assert tuple(up_right) == self._env_size
-        assert n_channels == self._n_channels, self._n_channels
-
-    @property
-    @override
-    def maximum_reward(self):
-        return super().maximum_reward
+    def _get_info(self) -> dict:
+        info = super()._get_info()
+        return info
 

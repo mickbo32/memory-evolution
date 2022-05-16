@@ -304,7 +304,7 @@ line: (6, 5, 0, 6) pixels: [(6, 5), (5, 5), (4, 5), (3, 5), (2, 6), (1, 6), (0, 
 '''
 
 
-def is_point_in_circle(point, radius, origin=(0, 0)) -> bool:
+def is_point_in_circle(point, radius, origin=(0., 0.)) -> bool:
     """Returns True if ``point`` is inside or on the border of a circle
     of radius ``radius`` and origin ``origin``."""
     if len(point) != 2 or len(origin) != 2:
@@ -312,6 +312,9 @@ def is_point_in_circle(point, radius, origin=(0, 0)) -> bool:
     x0, y0 = origin
     x, y = point
     return (x - x0) ** 2 + (y - y0) ** 2 <= radius ** 2
+
+
+assert is_point_in_circle((0., 0.), 0., origin=(0., 0.))
 
 
 def is_simple_polygon(polygon: Polygon):

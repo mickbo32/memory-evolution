@@ -7,8 +7,8 @@ class EnvironmentNotSetError(Exception):
     but an environment has not been set yet."""
 
     default_msg = (
-        "An environment is needed but an environment"
-        " has not been set yet."
+        "The agent needs an environment, "
+        "but the agent has not set an environment yet."
     )
 
     def __init__(self, *args, **kwargs):

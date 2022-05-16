@@ -16,15 +16,17 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import neat
 import numpy as np
+import pygame as pg
 from numpy.random import SeedSequence
 import pandas as pd
 
 from gym.utils.env_checker import check_env  # from stable_baselines.common.env_checker import check_env
 
+import memory_evolution
 from memory_evolution.agents import RandomActionAgent, RnnNeatAgent, CtrnnNeatAgent
 from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze, RadialArmMaze
 from memory_evolution.evaluate import evaluate_agent
-from memory_evolution.utils import set_main_logger
+from memory_evolution.utils import set_main_logger, COLORS
 
 # matplotlib settings:
 isRunningInPyCharm = "PYCHARM_HOSTED" in os.environ
@@ -71,7 +73,8 @@ if __name__ == '__main__':
 
     # logging settings:
     logging_dir, UTCNOW = set_main_logger(file_handler_all=None,
-                                          stdout_handler=logging.INFO,
+                                          stdout_handler=logging.INFO - 1,  # logging.INFO,
+                                          file_handler_now=logging.DEBUG + 5,  # +5 otherwise the log file is too heavy.
                                           file_handler_now_filename_fmt="log_" + JOB_ID + "_{utcnow}.log")
     logging.info(__file__)
 
@@ -109,7 +112,32 @@ if __name__ == '__main__':
     # env = TMaze(seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7, observation_noise=('normal', 0.0, 0.5))
     # env = TMaze(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
 
-    # env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.15, n_food_items=2, vision_depth=.25, vision_field_angle=135, max_steps=1000, vision_resolution=7)
+    # env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.15, food_size=.05,
+    #                       n_food_items=2, max_steps=1000,
+    #                       vision_depth=.25, vision_field_angle=135, vision_resolution=7)
+    # env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.075, food_size=.05,
+    #                       n_food_items=2, max_steps=1000,
+    #                       # vision_depth=.25, vision_field_angle=135, vision_resolution=7)
+    #                       vision_depth=.5, vision_field_angle=210, vision_resolution=20)
+    # env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.075, food_size=.05,
+    #                       n_food_items=2, max_steps=500,
+    #                       vision_depth=.3, vision_field_angle=135, vision_resolution=8)
+    # env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.075, food_size=.05,
+    #                       n_food_items=10, max_steps=500,
+    #                       rotation_step=5.,
+    #                       vision_depth=.3, vision_field_angle=135, vision_resolution=16,
+    #                       # food_color=COLORS['black'], outside_color=COLORS['gray'], background_color=COLORS['white'],
+    #                       food_color=COLORS['white'], outside_color=COLORS['gray'], background_color=COLORS['black'],
+    #                       )
+    # env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.075, food_size=.0375,
+    #                       n_food_items=10, max_steps=500,
+    #                       rotation_step=10., forward_step=.01,
+    #                       # vision_depth=.3, vision_field_angle=135, vision_resolution=15,
+    #                       vision_depth=.3, vision_field_angle=135, vision_resolution=7,
+    #                       # food_color=COLORS['black'], outside_color=COLORS['black'], background_color=COLORS['white'],
+    #                       # food_color=COLORS['black'], outside_color=COLORS['gray'], background_color=COLORS['white'],
+    #                       # food_color=COLORS['white'], outside_color=COLORS['gray'], background_color=COLORS['black'],
+    #                       )
 
     # env = RadialArmMaze(3, 1., window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
     # env = RadialArmMaze(9, window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
@@ -120,24 +148,83 @@ if __name__ == '__main__':
 
     # env = TMaze(seed=42, agent_size=.10, n_food_items=10, max_steps=500, vision_resolution=7)
 
-    env = RadialArmMaze(corridor_width=.2,
-                        window_size=200, seed=42, agent_size=.075, food_size=.05, n_food_items=1,
-                        init_agent_position=(.5, .1), init_food_positions=((.9, .5),),
-                        vision_depth=.2, vision_field_angle=135, max_steps=400, vision_resolution=8)
+    # env = RadialArmMaze(corridor_width=.2,
+    #                     window_size=200, seed=42, agent_size=.075, food_size=.05, n_food_items=1, max_steps=400,
+    #                     init_agent_position=(.5, .1), init_food_positions=((.9, .5),),
+    #                     vision_depth=.2, vision_field_angle=135, vision_resolution=8)
 
-    print('observation_space:',
-          env.observation_space.shape,
-          np.asarray(env.observation_space.shape).prod())
+    corridor_width = .2
+    landmark_size = .25  # .15
+    lm_dist = 1. / 2  # corridor_width + landmark_size * 1.10
+    lm_bord = 1. / 4  # landmark_size / 2 + .1
+    env = RadialArmMaze(corridor_width=corridor_width,
+                        window_size=200, agent_size=.075, food_size=.05, n_food_items=1, max_steps=100,
+                        # vision_depth=.2, vision_field_angle=135, vision_resolution=7,
+                        # vision_depth=.2, vision_field_angle=135, vision_resolution=4,
+                        # vision_channels=3, vision_point_radius=.025,
+                        # vision_depth=.25, vision_field_angle=135, vision_resolution=3,
+                        # vision_channels=3, vision_point_radius=.05,
+                        vision_depth=.2, vision_field_angle=135, vision_resolution=3,
+                        vision_channels=3, vision_point_radius=.04,
+                        # vision_depth=.2, vision_field_angle=135, vision_resolution=3,
+                        # vision_channels=3, vision_point_radius=.035,
+                        agent_color=COLORS['cyan'],
+                        background_color=np.asarray((0, 0, 0), dtype=np.uint8),
+                        outside_color=np.asarray((255, 0, 0), dtype=np.uint8),
+                        food_color=np.asarray((0, 200, 55), dtype=np.uint8), food_visible=False,
+                        random_init_agent_position=((.5, .1), (.5, .9), (.1, .5),),
+                        init_food_positions=((target_pos := (.9, .5)),),
+                        landmark_size=landmark_size,
+                        init_landmarks_positions=((.5 - lm_dist / 2, lm_bord), (.5 + lm_dist / 2, lm_bord),
+                                                  (.5 - lm_dist / 2, 1. - lm_bord), (.5 + lm_dist / 2, 1. - lm_bord),),
+                        landmarks_colors=(
+                            np.asarray((255, 0, 255), dtype=np.uint8), np.asarray((255, 255, 0), dtype=np.uint8),
+                            np.asarray((255, 127, 127), dtype=np.uint8), np.asarray((255, 255, 255), dtype=np.uint8),
+                        ),
+                        )
+    # env = TMaze(
+    #                     corridor_width=corridor_width,
+    #                     window_size=200, agent_size=.075, food_size=.05, n_food_items=1, max_steps=400,
+    #                     vision_depth=.2, vision_field_angle=135, vision_resolution=3,
+    #                     vision_channels=1, vision_point_radius=.04,
+    #                     agent_color=COLORS['cyan'],
+    #                     background_color=np.asarray((0, 0, 0), dtype=np.uint8),
+    #                     outside_color=np.asarray((255, 0, 0), dtype=np.uint8),
+    #                     food_color=np.asarray((0, 200, 55), dtype=np.uint8), food_visible=False,
+    #                     random_init_agent_position=((.1, .9), (.5, .1),),
+    #                     init_food_positions=((target_pos := (.9, .9)),),
+    #                     )
+
+    logging.info(f"Env: {type(env).__qualname__}")
+    logging.info(f"observation_space: "
+                 f"{env.observation_space.shape} "
+                 f"{np.asarray(env.observation_space.shape).prod()}")
     # picKle env:
     with open(os.path.join(logging_dir, LOG_TAG + '_env.pickle'), "wb") as f:
         pickle.dump(env, f)
     # check pickle env:  # todo: move in tests
+    def assert_init_params_equal(_init_params_1, _init_params_2):
+        if not isinstance(_init_params_1, dict):
+            _init_params_1 = _init_params_1.arguments
+        if not isinstance(_init_params_2, dict):
+            _init_params_2 = _init_params_2.arguments
+        assert _init_params_1.keys() == _init_params_2.keys()
+        for k, v in _init_params_1.items():
+            if isinstance(v, (np.ndarray, list, tuple)):
+                np.array_equal(v, _init_params_2[k])
+            elif isinstance(v, dict):
+                assert_init_params_equal(v, _init_params_2[k])
+            else:
+                assert v == _init_params_2[k]
     with open(os.path.join(logging_dir, LOG_TAG + '_env.pickle'), "rb") as f:
         _loaded_env = pickle.load(f)
         assert type(_loaded_env) is type(env)
-        assert _loaded_env._init_params == env._init_params
+        # assert _loaded_env._init_params == env._init_params
+        assert_init_params_equal(env._init_params, _loaded_env._init_params)
     # check env:
-    check_env(env)  # todo: move in tests
+    #check_env(env)  # todo: move in tests
+    random.seed()  # reseed, because check_env(env) sets always the same random.seed
+    logging.debug(random.getstate())
     print('Env checked.')
 
     # print(env.action_space)  # Discrete(4)
@@ -157,10 +244,36 @@ if __name__ == '__main__':
     # logging: save current config file for later use:
     shutil.copyfile(config_path, os.path.join(logging_dir, LOG_TAG + '_config'))
 
+    # select Phenotype:
     Phenotype = RnnNeatAgent
+
+    # set Phenotype attributes (overwrite default values, e.g. fitness and evaluate_agent params):
+    # Phenotype.fitness_func = memory_evolution.evaluate.FitnessRewardAndSteps(5., 5., normalize_weights=False)
+    # Phenotype.eval_num_episodes = 2
+    # Phenotype.eval_episodes_aggr_func = 'min'
+    # Phenotype.fitness_func = memory_evolution.evaluate.FitnessRewardAndSteps(4., 6., normalize_weights=False)
+    # Phenotype.eval_num_episodes = 5
+    # Phenotype.eval_episodes_aggr_func = 'median'
+    # # allocentric RadialArmMaze:
+    # Phenotype.fitness_func = memory_evolution.evaluate.fitness_func_time_inverse
+    # Phenotype.eval_num_episodes = 5
+    # Phenotype.eval_episodes_aggr_func = 'median'
+    assert env.n_food_items == 1 and env.max_steps is not None
+    Phenotype.fitness_func = memory_evolution.evaluate.FitnessDistanceInverse(target_pos)
+    Phenotype.eval_num_episodes = 5
+    Phenotype.eval_episodes_aggr_func = 'median'
+
+    # dump Phenotype for later use:
     with open(os.path.join(logging_dir, LOG_TAG + '_phenotype.pickle'), "wb") as f:
         pickle.dump(Phenotype, f)
+    # construct agent:
     agent = Phenotype(config_path)
+
+    logging.info(f"Phenotype: {Phenotype.__qualname__}")
+    logging.info(f"Phenotype.fitness_func: {Phenotype.fitness_func}")
+    logging.info(f"Phenotype.eval_num_episodes: {Phenotype.eval_num_episodes}")
+    logging.info(f"Phenotype.eval_episodes_aggr_func: {Phenotype.eval_episodes_aggr_func}")
+    print()
 
     # ----- MAIN LOOP -----
     # Evolve, interact, repeat.
@@ -178,8 +291,8 @@ if __name__ == '__main__':
 
     # evaluate_agent(RandomActionAgent(env), env, episodes=2, render=True)
 
-    checkpointer = neat.Checkpointer(generation_interval=100,
-                                     time_interval_seconds=300,
+    checkpointer = neat.Checkpointer(generation_interval=200,
+                                     time_interval_seconds=600,
                                      filename_prefix=os.path.join(
                                          logging_dir,
                                          LOG_TAG + '_neat-checkpoint-'))
@@ -187,12 +300,12 @@ if __name__ == '__main__':
     agent.set_env(env)
     winner = agent.evolve(1000, render=render, checkpointer=checkpointer, parallel=parallel,
                           filename_tag=LOG_TAG + '_', path_dir=logging_dir, image_format='png',
-                          render_best=False)
+                          view_best=False)
     # fixme: todo: parallel=True use the same seed for the environment in each process
     #     (but for the agent is correctly using a different seed it seems)
 
     # render the best agent:
-    evaluate_agent(agent, env, episodes=2, render=render_best,
+    evaluate_agent(agent, env, episodes=3, render=render_best,
                    save_gif=True,
                    save_gif_name=os.path.join(logging_dir, LOG_TAG + '_frames.gif'))
 

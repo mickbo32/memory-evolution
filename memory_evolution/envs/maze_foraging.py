@@ -1,5 +1,6 @@
 from collections import defaultdict, Counter
 from collections.abc import Iterable, Sequence
+import logging
 import math
 from numbers import Number, Real
 from typing import Any, Literal, Optional, Union
@@ -21,6 +22,7 @@ import memory_evolution
 from memory_evolution.geometry import is_simple_polygon, Pos
 from memory_evolution.utils import convert_image_to_pygame
 from memory_evolution.utils import MustOverride, override
+from memory_evolution.utils import EmptyDefaultValueError, get_default_value
 
 from .base_foraging import BaseForagingEnv, Agent, FoodItem, get_valid_item_positions_mask
 
@@ -31,8 +33,21 @@ class MazeForagingEnv(BaseForagingEnv):
                  *,
                  borders: Optional[Iterable[Polygon]] = None,
                  platform: Optional[Polygon] = None,
+                 random_init_agent_position: Optional[Sequence[Pos]] = None,
                  **kwargs
                  ) -> None:
+        """Build a Maze environment.
+
+        The maze is build using ``borders`` or ``platform``, only one of them should be provided.
+
+        Args:
+            borders: list of borders, if ``borders`` are provided they are used to build the maze.
+            platform: the platform of the maze, a single connected valid Polygon on which the agent can move;
+                if ``platform`` is provided it is used to build the maze.
+            random_init_agent_position: list of positions from which the initial agent position will be chosen.
+        """
+        if kwargs.get('init_agent_position', None) is not None and random_init_agent_position is not None:
+            raise ValueError("'init_agent_position' and 'random_init_agent_position' cannot be provided together.")
         super().__init__(
             **kwargs
         )
@@ -55,7 +70,7 @@ class MazeForagingEnv(BaseForagingEnv):
         self._platform = platform
 
         # update background np.ndarray and background_img pygame image
-        border_color = self.outside_color
+        border_color = self._outside_color
         background = self._soil.copy()
         borders_mask = get_valid_item_positions_mask(self._platform, 0., self.window_size, self.env_size)
         background = convert_image_to_pygame(background)
@@ -63,12 +78,33 @@ class MazeForagingEnv(BaseForagingEnv):
         self._background_img = borders_mask.to_surface(
             background,
             setsurface=background,
+            setcolor=self._background_color,
             unsetcolor=border_color
         )
 
         # update valid positions:
         # valid positions:
         self._compute_and_set_valid_positions(self._platform)
+
+        # random_init_agent_position used for choosing an initial agent position:
+        if kwargs.get('init_agent_position', None) is not None and random_init_agent_position is not None:
+            raise ValueError("'init_agent_position' and 'random_init_agent_position' cannot be provided together.")
+        if random_init_agent_position is not None:
+            assert self._init_agent_position is None
+            if not isinstance(random_init_agent_position, Sequence):
+                raise TypeError(
+                    "'random_init_agent_position' must be a Sequence of positions among which choosing from")
+            for pos in random_init_agent_position:
+                if not isinstance(pos, Iterable):
+                    raise TypeError(
+                        "position in 'random_init_agent_position' should be something from which a point can be generated (an Iterable)")
+            random_init_agent_position = [(pos if isinstance(pos, Pos) else Pos(*pos))
+                                          for pos in random_init_agent_position]
+            for pos in random_init_agent_position:
+                if len(pos) != 2:
+                    raise ValueError("position in 'random_init_agent_position' should be 2D (and without channels)")
+        self._random_init_agent_position = random_init_agent_position
+        # TODO: check random_init_agent_position are all valid agent positions
 
     @property
     @override
@@ -110,17 +146,24 @@ class MazeForagingEnv(BaseForagingEnv):
 
         return platform
 
-    def _draw_env(self, screen) -> None:
-        # draw stuff:
-        # pass
+    def _update_env_img(self) -> None:
+        super()._update_env_img()
 
-        # draw agent and food items later, so you can see them above borders
-        # if for some reasons they are plotted outside the maze, but mainly you can see
-        # vision points above borders
-        super()._draw_env(screen)
+    def _render_env(self, screen) -> None:
+        super()._render_env(screen)
 
     def _init_state(self) -> None:
+        if self._random_init_agent_position is not None:
+            assert self._init_agent_position is None
+            # don't use self.np_random.choice() otherwise it converts Pos object in np.ndarray array
+            idx = self.np_random.integers(0, len(self._random_init_agent_position))
+            __init_agent_position = self._random_init_agent_position[idx]
+            self._init_agent_position = __init_agent_position
+            self.debug_info['_init_state'][f'_{type(self).__name__}__init_agent_position'] = __init_agent_position
+            logging.debug(f"_init_state: random_init_agent_position chosen: {self._init_agent_position}")
         super()._init_state()
+        if self._random_init_agent_position is not None:
+            self._init_agent_position = None
 
     def _update_state(self, action) -> Real:
         return super()._update_state(action)
@@ -128,16 +171,36 @@ class MazeForagingEnv(BaseForagingEnv):
     def _get_observation(self) -> np.ndarray:
         return super()._get_observation()
 
-    def _get_point_color(self, point):
+    def _get_point_color(self, point,
+                         use_env_space=get_default_value(BaseForagingEnv._get_point_color, 'use_env_space'),
+                         use_neighbours=get_default_value(BaseForagingEnv._get_point_color, 'use_neighbours'),
+                         aggregation_func=get_default_value(BaseForagingEnv._get_point_color, 'aggregation_func'),
+                         ):
         # base method it reads the env_img, thus if you update that in the init it is enough.
-        return super()._get_point_color(point)
+        return super()._get_point_color(point,
+                                        use_env_space=use_env_space,
+                                        use_neighbours=use_neighbours,
+                                        aggregation_func=aggregation_func)
 
     def _is_done(self) -> bool:
         return super()._is_done()
 
     def _get_info(self) -> dict:
         info = super()._get_info()
+
+        # platform:
         info['env_info']['platform'] = self._platform
+
+        # self._random_init_agent_position:
+        assert self._init_agent_position is None
+        assert 'random_init_agent_position' not in info['env_info']
+        info['env_info']['random_init_agent_position'] = self._random_init_agent_position
+        assert 'init_agent_position' in info['env_info']
+        assert info['env_info']['init_agent_position'] is None
+        if self._random_init_agent_position is not None:
+            info['env_info']['init_agent_position'] = self.debug_info.get(
+                '_init_state', {}).get(f'_{type(self).__name__}__init_agent_position', None)
+
         return info
 
     def is_valid_position(self, pos, item: Literal['agent', 'food'], is_env_pos: bool = True) -> bool:

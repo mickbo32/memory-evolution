@@ -1,4 +1,5 @@
-import logging
+from functools import reduce
+from operator import mul
 import os
 import pickle
 from pprint import pprint
@@ -22,7 +23,7 @@ import memory_evolution
 from memory_evolution.agents import RandomActionAgent, RnnNeatAgent, CtrnnNeatAgent
 from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze, RadialArmMaze
 from memory_evolution.evaluate import evaluate_agent
-from memory_evolution.utils import set_main_logger
+from memory_evolution.utils import get_color_str, get_utcnow_str, denormalize_observation
 
 # matplotlib settings:
 isRunningInPyCharm = "PYCHARM_HOSTED" in os.environ
@@ -38,18 +39,14 @@ if __name__ == '__main__':
     # ----- Settings -----
     RENDER = False  # render or just save gif files
     # ---
-    # LOAD_AGENT = '8492571_2022-04-20_212136.999729+0000'
-    LOAD_AGENT = '8525497_2022-05-08_144349.993182+0000'
-    LOAD_AGENT = '8527358_2022-05-09_104749.699383+0000'
-    LOAD_AGENT = '8535242_2022-05-16_101934.963202+0000'
+    # LOAD_AGENT = '8499798_2022-04-25_163845.730764+0000'  # best genome
+    # LOAD_AGENT = '8508254_2022-05-04_021025.108389+0000'
+    # LOAD_AGENT = '8525497_2022-05-08_144349.993182+0000'  # vision_channels = 1
+    LOAD_AGENT = '8527358_2022-05-09_104749.699383+0000'  # vision_channels = 3
     LOAD_AGENT_DIR = "logs/saved_logs/no-date/logs/"
-    # LOAD_FROM: AVAILABLE_LOADING_METHODS = 'checkpoint'
+    N_EPISODES = 2
     LOAD_FROM: AVAILABLE_LOADING_METHODS = 'pickle'
-    N_EPISODES = 3
     LOGGING_DIR = 'logs'
-    # ---
-    # CHECKPOINT_NUMBER = None  # if None, load the last checkpoint
-    CHECKPOINT_NUMBER = None
     # ---
     # override variables if provided as program arguments
     if len(sys.argv) == 1:
@@ -59,17 +56,20 @@ if __name__ == '__main__':
         if len(sys.argv) >= 3:
             LOAD_AGENT_DIR = sys.argv[2]
         elif len(sys.argv) >= 4:
-            LOAD_FROM = sys.argv[3]
+            N_EPISODES = sys.argv[3]
         elif len(sys.argv) >= 5:
-            N_EPISODES = sys.argv[4]
+            LOAD_FROM = sys.argv[4]
     else:
         raise RuntimeError(sys.argv)
 
     assert LOAD_FROM in typing.get_args(AVAILABLE_LOADING_METHODS), LOAD_FROM
 
+    CHECKPOINT_NUMBER = None  # if None, load the last checkpoint
+
     # compute runtime consts:
     LOAD_ENV = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_env.pickle')
     LOAD_PHENOTYPE = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_phenotype.pickle')
+    LOAD_STATS = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_stats.pickle')
     if LOAD_FROM == 'pickle':
         CONFIG_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_config')
         LOAD_AGENT_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_genome.pickle')
@@ -90,21 +90,8 @@ if __name__ == '__main__':
         raise AssertionError
 
     # logging settings:
-    logging_dir, UTCNOW = set_main_logger(file_handler_all=None,
-                                          logging_dir=LOGGING_DIR,
-                                          stdout_handler=logging.INFO,
-                                          file_handler_now_filename_fmt="log_load_" + LOAD_AGENT + "__now_{utcnow}.log")
-    del LOGGING_DIR  # from now on use 'logging_dir' instead.
-    logging.info(__file__)
-    LOADED_UTCNOW = LOAD_AGENT
-    if LOAD_FROM == 'checkpoint':
-        LOADED_UTCNOW += f'_checkpoint-{CHECKPOINT_NUMBER}'
-    LOADED_UTCNOW += '_LOADED_AGENT___now_' + UTCNOW
-
-    # neat random seeding:
-    # random.seed(42)
-    logging.debug(random.getstate())
-    # Use random.setstate(state) to set an old state, where 'state' have been obtained from a previous call to getstate().
+    UTCNOW = get_utcnow_str()
+    LOADED_UTCNOW = LOAD_AGENT + '_LOADED_AGENT___now_' + UTCNOW
 
     # ----- ENVIRONMENT -----
 
@@ -119,12 +106,12 @@ if __name__ == '__main__':
         env = pickle.load(f)
 
     print(env.__str__init_params__())
-    logging.debug(env._seed)  # todo: use a variable seed (e.g.: seed=42; env=TMaze(seed=seed); logging.debug(seed)) for assignation of seed, don't access the internal variable
     print('observation_space:',
           env.observation_space.shape,
           np.asarray(env.observation_space.shape).prod())
 
     # ----- AGENT -----
+
 
     with open(LOAD_PHENOTYPE, "rb") as f:
         Phenotype = pickle.load(f)
@@ -134,9 +121,17 @@ if __name__ == '__main__':
         with open(LOAD_AGENT_PATH, "rb") as f:
             genome = pickle.load(f)
         agent = Phenotype(CONFIG_PATH, genome=genome)
+        config = agent.config
 
     # load from checkpoint:
     elif LOAD_FROM == 'checkpoint':
+
+        input(
+            "Loading population can be memory intensive, do you really want to open it?"
+            " (be sure you have a lot of free memory (e.g. close Chrome before going on))"
+            " [Press ENTER to continue]")
+        print('Loading population and agent...')
+
         p = neat.Checkpointer.restore_checkpoint(LOAD_AGENT_PATH)
         config = p.config
         # pprint(p.population)
@@ -151,33 +146,29 @@ if __name__ == '__main__':
     else:
         raise AssertionError
 
-    # ----- MAIN LOOP -----
-    # Evolve, interact, repeat.
+    with open(LOAD_STATS, "rb") as f:
+        # input(
+        #     "Stats file can be big, do you really want to open it?"
+        #     " (be sure you have a lot of free memory (e.g. close Chrome before going on))"
+        #     " [Press ENTER to continue]")
+        print('Loading stats...')
+        stats = pickle.load(f)
+    print(stats)
 
-    print('Evaluating agent ...\n')
+    agent.visualize_evolution(stats, stats_ylog=True, view=True,
+                              filename_stats=os.path.join(LOGGING_DIR, LOADED_UTCNOW + "_fitness.png"),
+                              filename_speciation=os.path.join(LOGGING_DIR, LOADED_UTCNOW + "_speciation.png"))
 
-    # to do: tests of evaluate_agent: episodes=1 | episodes=2 ;
-
-    RANDOM_AGENT_UTCNOW = 'RandomActionAgent_' + UTCNOW
-    # evaluate_agent(RandomActionAgent(env), env, episodes=2, render=True,
-    #                save_gif=True,
-    #                save_gif_dir=os.path.join(logging_dir, 'frames_' + RANDOM_AGENT_UTCNOW),
-    #                save_gif_name=RANDOM_AGENT_UTCNOW + '.gif')
-
+    obs_shape = env.observation_space.shape
+    obs_size = reduce(mul, obs_shape, 1)
+    input_nodes = config.genome_config.input_keys
+    assert obs_size == len(input_nodes) == len(agent.phenotype.input_nodes), (
+        obs_shape, len(input_nodes), len(agent.phenotype.input_nodes))
+    assert input_nodes == agent.phenotype.input_nodes
     agent.set_env(env)
-    # evaluate_agent(agent, env, episodes=2, render=True,
-    #                save_gif=False)
-    # evaluate_agent(agent, env, episodes=2, render=True,
-    #                save_gif=True,
-    #                save_gif_dir=os.path.join(logging_dir, 'frames_' + LOADED_UTCNOW),
-    #                save_gif_name=LOADED_UTCNOW + '.gif')
-    evaluate_agent(agent, env, episodes=N_EPISODES, render=RENDER,
-                   save_gif=True,
-                   save_gif_name=os.path.join(logging_dir, LOADED_UTCNOW + '_frames.gif'))
-    # Note: if you run twice evaluate_agent with the same name it will overwrite the previous gif
-    #   (but if save_gif_dir is provided it will raise an error because the directory already exists).
-
-    # ----- CLOSING AND REPORTING -----
-
-    env.close()
+    agent.visualize_genome(agent.genome, view=True, name='Genome',
+                           default_input_node_color='palette',
+                           filename=os.path.join(LOGGING_DIR, LOADED_UTCNOW + "_genome.gv"),
+                           format='svg',
+                           show_palette=True)
 
