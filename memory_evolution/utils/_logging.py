@@ -12,12 +12,13 @@ import pandas as pd
 def get_utcnow_str():
     return pd.Timestamp.utcnow().strftime('%Y-%m-%d_%H%M%S.%f%z')
 
+
 # logging settings:
 def set_main_logger(
                 logger_name: Optional[str] = None,
                 logging_dir: str = 'logs',
                 file_handler_now: Optional[int] = logging.DEBUG,
-                file_handler_now_filename_fmt: str = "log_{utcnow}.log",
+                file_handler_now_filename_fmt: str = "{utcnow}.log",  # "log_{utcnow}.log",
                 file_handler_all: Optional[int] = logging.DEBUG,
                 file_handler_all_filename: str = "log_all.log",
                 stderr_handler: Optional[int] = logging.WARNING,

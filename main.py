@@ -158,7 +158,7 @@ if __name__ == '__main__':
     lm_dist = 1. / 2  # corridor_width + landmark_size * 1.10
     lm_bord = 1. / 4  # landmark_size / 2 + .1
     env = RadialArmMaze(corridor_width=corridor_width,
-                        window_size=200, agent_size=.075, food_size=.05, n_food_items=1, max_steps=100,
+                        window_size=200, agent_size=.075, food_size=.05, n_food_items=1, max_steps=450,#max_steps=100,
                         # vision_depth=.2, vision_field_angle=135, vision_resolution=7,
                         # vision_depth=.2, vision_field_angle=135, vision_resolution=4,
                         # vision_channels=3, vision_point_radius=.025,
@@ -255,13 +255,16 @@ if __name__ == '__main__':
     # Phenotype.eval_num_episodes = 5
     # Phenotype.eval_episodes_aggr_func = 'median'
     # # allocentric RadialArmMaze:
+    assert env.n_food_items == 1 and env.max_steps is not None
     # Phenotype.fitness_func = memory_evolution.evaluate.fitness_func_time_inverse
     # Phenotype.eval_num_episodes = 5
+    # Phenotype.eval_episodes_aggr_func = 'min'
+    # Phenotype.fitness_func = memory_evolution.evaluate.FitnessDistanceInverse(target_pos)
+    # Phenotype.eval_num_episodes = 5
     # Phenotype.eval_episodes_aggr_func = 'median'
-    assert env.n_food_items == 1 and env.max_steps is not None
-    Phenotype.fitness_func = memory_evolution.evaluate.FitnessDistanceInverse(target_pos)
+    Phenotype.fitness_func = memory_evolution.evaluate.fitness_func_time_inverse
     Phenotype.eval_num_episodes = 5
-    Phenotype.eval_episodes_aggr_func = 'median'
+    Phenotype.eval_episodes_aggr_func = 'mean'
 
     # dump Phenotype for later use:
     with open(os.path.join(logging_dir, LOG_TAG + '_phenotype.pickle'), "wb") as f:
@@ -298,14 +301,14 @@ if __name__ == '__main__':
                                          LOG_TAG + '_neat-checkpoint-'))
 
     agent.set_env(env)
-    winner = agent.evolve(1000, render=render, checkpointer=checkpointer, parallel=parallel,
+    winner = agent.evolve(500, render=render, checkpointer=checkpointer, parallel=parallel,
                           filename_tag=LOG_TAG + '_', path_dir=logging_dir, image_format='png',
                           view_best=False)
     # fixme: todo: parallel=True use the same seed for the environment in each process
     #     (but for the agent is correctly using a different seed it seems)
 
     # render the best agent:
-    evaluate_agent(agent, env, episodes=3, render=render_best,
+    evaluate_agent(agent, env, episodes=5, render=render_best,
                    save_gif=True,
                    save_gif_name=os.path.join(logging_dir, LOG_TAG + '_frames.gif'))
 

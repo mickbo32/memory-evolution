@@ -42,6 +42,8 @@ if __name__ == '__main__':
     LOAD_AGENT = '8525497_2022-05-08_144349.993182+0000'
     LOAD_AGENT = '8527358_2022-05-09_104749.699383+0000'
     LOAD_AGENT = '8535242_2022-05-16_101934.963202+0000'
+    LOAD_AGENT = '8536569_2022-05-17_091348.920601+0000'
+    LOAD_AGENT = '8536464_2022-05-17_082404.342015+0000'
     LOAD_AGENT_DIR = "logs/saved_logs/no-date/logs/"
     # LOAD_FROM: AVAILABLE_LOADING_METHODS = 'checkpoint'
     LOAD_FROM: AVAILABLE_LOADING_METHODS = 'pickle'
@@ -93,7 +95,7 @@ if __name__ == '__main__':
     logging_dir, UTCNOW = set_main_logger(file_handler_all=None,
                                           logging_dir=LOGGING_DIR,
                                           stdout_handler=logging.INFO,
-                                          file_handler_now_filename_fmt="log_load_" + LOAD_AGENT + "__now_{utcnow}.log")
+                                          file_handler_now_filename_fmt=LOAD_AGENT + "_LOADED__now_{utcnow}.log")
     del LOGGING_DIR  # from now on use 'logging_dir' instead.
     logging.info(__file__)
     LOADED_UTCNOW = LOAD_AGENT

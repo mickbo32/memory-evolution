@@ -42,10 +42,12 @@ if __name__ == '__main__':
     # LOAD_AGENT = '8499798_2022-04-25_163845.730764+0000'  # best genome
     # LOAD_AGENT = '8508254_2022-05-04_021025.108389+0000'
     # LOAD_AGENT = '8525497_2022-05-08_144349.993182+0000'  # vision_channels = 1
-    LOAD_AGENT = '8527358_2022-05-09_104749.699383+0000'  # vision_channels = 3
+    # LOAD_AGENT = '8527358_2022-05-09_104749.699383+0000'  # vision_channels = 3
+    LOAD_AGENT = '8536464_2022-05-17_082404.342015+0000'
     LOAD_AGENT_DIR = "logs/saved_logs/no-date/logs/"
     N_EPISODES = 2
-    LOAD_FROM: AVAILABLE_LOADING_METHODS = 'pickle'
+    # LOAD_FROM: AVAILABLE_LOADING_METHODS = 'pickle'
+    LOAD_FROM: AVAILABLE_LOADING_METHODS = 'checkpoint'
     LOGGING_DIR = 'logs'
     # ---
     # override variables if provided as program arguments
@@ -126,10 +128,10 @@ if __name__ == '__main__':
     # load from checkpoint:
     elif LOAD_FROM == 'checkpoint':
 
-        input(
-            "Loading population can be memory intensive, do you really want to open it?"
-            " (be sure you have a lot of free memory (e.g. close Chrome before going on))"
-            " [Press ENTER to continue]")
+        # input(
+        #     "Loading population can be memory intensive, do you really want to open it?"
+        #     " (be sure you have a lot of free memory (e.g. close Chrome before going on))"
+        #     " [Press ENTER to continue]")
         print('Loading population and agent...')
 
         p = neat.Checkpointer.restore_checkpoint(LOAD_AGENT_PATH)

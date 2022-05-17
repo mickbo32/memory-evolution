@@ -363,9 +363,12 @@ class BaseNeatAgent(BaseAgent, ABC):
             max_rank = max(node_rank.values())
             assert min(node_rank.values()) == 0
             rank_hidden = defaultdict(list)
-            for h in hidden_nodes:
-                rank_hidden[node_rank[h]].append(h)
-            max_hidden_rank = max(rank_hidden)
+            if hidden_nodes:
+                for h in hidden_nodes:
+                    rank_hidden[node_rank[h]].append(h)
+                max_hidden_rank = max(rank_hidden)
+            else:
+                max_hidden_rank = 0
             # # outputs are placed all in the max rank (they are also in the correct order):
             # for o in output_nodes:
             #     rank_hidden[max_rank].append(o)
