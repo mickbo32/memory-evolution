@@ -12,7 +12,6 @@ from ._envs import (
     normalize_observation,
     PickableClock,
 )
-from ._logging import get_utcnow_str, set_main_logger
 from ._override import MustOverride, MustOverrideMeta, NotOverriddenError, override
 from ._utils import EmptyDefaultValueError, get_default_value
 from ._video import generate_gif_from_path

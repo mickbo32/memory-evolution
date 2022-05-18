@@ -21,7 +21,22 @@ from numpy.random import SeedSequence, default_rng
 import pandas as pd
 
 import memory_evolution
+from memory_evolution.logging import TrackingVal
 from ._fitnesses import fitness_func_total_reward
+
+
+_track_level = logging.DEBUG + 5
+_track_accumulate_n = 3
+tracking_reset_actual_time_logger = TrackingVal(logging.getLogger(), _track_level, _track_accumulate_n,
+        msg_fmt="Average(n={n}) Episode reset took 'reset_actual_time': avg={avg:<5} min={min:<5} max={max:<5}")
+tracking_fitness_logger = TrackingVal(logging.getLogger(), _track_level, _track_accumulate_n,
+        msg_fmt="Average(n={n}) Episode fitness:        avg={avg:<5} min={min:<5} max={max:<5}")
+tracking_step_logger = TrackingVal(logging.getLogger(), _track_level, _track_accumulate_n,
+        msg_fmt="Average(n={n}) Episode finished after timesteps: avg={avg:<5} min={min:<5} max={max:<5}")
+tracking_end_t_logger = TrackingVal(logging.getLogger(), _track_level, _track_accumulate_n,
+        msg_fmt="Average(n={n}) Episode 'end_t':        avg={avg:<5} min={min:<5} max={max:<5}")
+tracking_actual_time_logger = TrackingVal(logging.getLogger(), _track_level, _track_accumulate_n,
+        msg_fmt="Average(n={n}) Episode 'actual_time':  avg={avg:<5} min={min:<5} max={max:<5}")
 
 
 def evaluate_agent(agent,
@@ -134,7 +149,8 @@ def evaluate_agent(agent,
         start_time_episode = time.perf_counter_ns()
         reset_actual_time = (start_time_episode - start_time_episode_including_reset) / 10 ** 9
         msg = f"Episode reset took {reset_actual_time} actual seconds."
-        logging.log(logging.DEBUG + 5, '\n\t' + msg)
+        logging.log(logging.DEBUG + 3, '\n\t' + msg)
+        tracking_reset_actual_time_logger(reset_actual_time)
         # if render:
         #     print(msg, end='\n\n')
         total_reward = 0.0
@@ -209,9 +225,14 @@ def evaluate_agent(agent,
                 f", for a total of {end_t} simulated seconds"
                 f" (in {actual_time} actual seconds)."
             )
-            logging.log(logging.DEBUG + 5, '\n\t' + '\n\t'.join(msg.split('\n')))
+            logging.log(logging.DEBUG + 4, '\n\t' + '\n\t'.join(msg.split('\n')))
             # if render:
             #     print(msg, end='\n\n')
+            # from global scope (logging):
+            tracking_fitness_logger(fitness)
+            tracking_step_logger(step)
+            tracking_end_t_logger(end_t)
+            tracking_actual_time_logger(actual_time)
             if save_gif:
                 gifname = save_gif_name
                 if episode_str:

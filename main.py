@@ -26,7 +26,8 @@ import memory_evolution
 from memory_evolution.agents import RandomActionAgent, RnnNeatAgent, CtrnnNeatAgent
 from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze, RadialArmMaze
 from memory_evolution.evaluate import evaluate_agent
-from memory_evolution.utils import set_main_logger, COLORS
+from memory_evolution.logging import set_main_logger
+from memory_evolution.utils import COLORS
 
 # matplotlib settings:
 isRunningInPyCharm = "PYCHARM_HOSTED" in os.environ
@@ -75,7 +76,7 @@ if __name__ == '__main__':
     logging_dir, UTCNOW = set_main_logger(file_handler_all=None,
                                           stdout_handler=logging.INFO - 1,  # logging.INFO,
                                           file_handler_now=logging.DEBUG + 5,  # +5 otherwise the log file is too heavy.
-                                          file_handler_now_filename_fmt="log_" + JOB_ID + "_{utcnow}.log")
+                                          file_handler_now_filename_fmt=JOB_ID + "_{utcnow}.log")
     logging.info(__file__)
 
     # if job_id is passed to the program, use it in the log tag:
@@ -158,7 +159,7 @@ if __name__ == '__main__':
     lm_dist = 1. / 2  # corridor_width + landmark_size * 1.10
     lm_bord = 1. / 4  # landmark_size / 2 + .1
     env = RadialArmMaze(corridor_width=corridor_width,
-                        window_size=200, agent_size=.075, food_size=.05, n_food_items=1, max_steps=450,#max_steps=100,
+                        window_size=200, agent_size=.075, food_size=.05, n_food_items=1, max_steps=400,#max_steps=100,
                         # vision_depth=.2, vision_field_angle=135, vision_resolution=7,
                         # vision_depth=.2, vision_field_angle=135, vision_resolution=4,
                         # vision_channels=3, vision_point_radius=.025,
@@ -256,14 +257,16 @@ if __name__ == '__main__':
     # Phenotype.eval_episodes_aggr_func = 'median'
     # # allocentric RadialArmMaze:
     assert env.n_food_items == 1 and env.max_steps is not None
-    # Phenotype.fitness_func = memory_evolution.evaluate.fitness_func_time_inverse
-    # Phenotype.eval_num_episodes = 5
-    # Phenotype.eval_episodes_aggr_func = 'min'
-    # Phenotype.fitness_func = memory_evolution.evaluate.FitnessDistanceInverse(target_pos)
-    # Phenotype.eval_num_episodes = 5
-    # Phenotype.eval_episodes_aggr_func = 'median'
     Phenotype.fitness_func = memory_evolution.evaluate.fitness_func_time_inverse
+    # Phenotype.fitness_func = memory_evolution.evaluate.FitnessDistanceInverse(target_pos)
+    # Phenotype.eval_num_episodes = 2
+    # Phenotype.eval_num_episodes = 3
     Phenotype.eval_num_episodes = 5
+    # Phenotype.eval_num_episodes = 10
+    # Phenotype.eval_num_episodes = 30
+    # Phenotype.eval_num_episodes = 50
+    # Phenotype.eval_episodes_aggr_func = 'min'
+    # Phenotype.eval_episodes_aggr_func = 'median'
     Phenotype.eval_episodes_aggr_func = 'mean'
 
     # dump Phenotype for later use:

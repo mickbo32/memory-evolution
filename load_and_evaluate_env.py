@@ -22,7 +22,7 @@ import memory_evolution
 from memory_evolution.agents import RandomActionAgent, RnnNeatAgent, CtrnnNeatAgent
 from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze, RadialArmMaze
 from memory_evolution.evaluate import evaluate_agent
-from memory_evolution.utils import set_main_logger
+from memory_evolution.logging import set_main_logger
 
 # matplotlib settings:
 isRunningInPyCharm = "PYCHARM_HOSTED" in os.environ
@@ -44,10 +44,11 @@ if __name__ == '__main__':
     LOAD_AGENT = '8535242_2022-05-16_101934.963202+0000'
     LOAD_AGENT = '8536569_2022-05-17_091348.920601+0000'
     LOAD_AGENT = '8536464_2022-05-17_082404.342015+0000'
+    LOAD_AGENT = '8537163_2022-05-17_135612.558440+0000'
     LOAD_AGENT_DIR = "logs/saved_logs/no-date/logs/"
     # LOAD_FROM: AVAILABLE_LOADING_METHODS = 'checkpoint'
     LOAD_FROM: AVAILABLE_LOADING_METHODS = 'pickle'
-    N_EPISODES = 3
+    N_EPISODES = 5
     LOGGING_DIR = 'logs'
     # ---
     # CHECKPOINT_NUMBER = None  # if None, load the last checkpoint
