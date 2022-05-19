@@ -23,7 +23,8 @@ import memory_evolution
 from memory_evolution.agents import RandomActionAgent, RnnNeatAgent, CtrnnNeatAgent
 from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze, RadialArmMaze
 from memory_evolution.evaluate import evaluate_agent
-from memory_evolution.utils import get_color_str, get_utcnow_str, denormalize_observation
+from memory_evolution.logging import get_utcnow_str
+from memory_evolution.utils import get_color_str, denormalize_observation
 
 # matplotlib settings:
 isRunningInPyCharm = "PYCHARM_HOSTED" in os.environ

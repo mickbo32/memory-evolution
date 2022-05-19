@@ -26,7 +26,7 @@ from ._fitnesses import fitness_func_total_reward
 
 
 _track_level = logging.DEBUG + 5
-_track_accumulate_n = 3
+_track_accumulate_n = 500
 tracking_reset_actual_time_logger = TrackingVal(logging.getLogger(), _track_level, _track_accumulate_n,
         msg_fmt="Average(n={n}) Episode reset took 'reset_actual_time': avg={avg:<5} min={min:<5} max={max:<5}")
 tracking_fitness_logger = TrackingVal(logging.getLogger(), _track_level, _track_accumulate_n,

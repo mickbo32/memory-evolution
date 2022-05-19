@@ -154,12 +154,13 @@ if __name__ == '__main__':
     #                     init_agent_position=(.5, .1), init_food_positions=((.9, .5),),
     #                     vision_depth=.2, vision_field_angle=135, vision_resolution=8)
 
+    max_steps = 400  # max_steps=100
     corridor_width = .2
     landmark_size = .25  # .15
     lm_dist = 1. / 2  # corridor_width + landmark_size * 1.10
     lm_bord = 1. / 4  # landmark_size / 2 + .1
     env = RadialArmMaze(corridor_width=corridor_width,
-                        window_size=200, agent_size=.075, food_size=.05, n_food_items=1, max_steps=400,#max_steps=100,
+                        window_size=200, agent_size=.075, food_size=.05, n_food_items=1, max_steps=max_steps,
                         # vision_depth=.2, vision_field_angle=135, vision_resolution=7,
                         # vision_depth=.2, vision_field_angle=135, vision_resolution=4,
                         # vision_channels=3, vision_point_radius=.025,
@@ -257,16 +258,41 @@ if __name__ == '__main__':
     # Phenotype.eval_episodes_aggr_func = 'median'
     # # allocentric RadialArmMaze:
     assert env.n_food_items == 1 and env.max_steps is not None
-    Phenotype.fitness_func = memory_evolution.evaluate.fitness_func_time_inverse
+    # Phenotype.fitness_func = memory_evolution.evaluate.fitness_func_time_inverse
     # Phenotype.fitness_func = memory_evolution.evaluate.FitnessDistanceInverse(target_pos)
     # Phenotype.eval_num_episodes = 2
     # Phenotype.eval_num_episodes = 3
-    Phenotype.eval_num_episodes = 5
+    # Phenotype.eval_num_episodes = 5
     # Phenotype.eval_num_episodes = 10
     # Phenotype.eval_num_episodes = 30
     # Phenotype.eval_num_episodes = 50
     # Phenotype.eval_episodes_aggr_func = 'min'
     # Phenotype.eval_episodes_aggr_func = 'median'
+    # Phenotype.eval_episodes_aggr_func = 'mean'
+    # #
+    # func = memory_evolution.evaluate.fitness_func_time
+    # func.min = func(reward=None, steps=max_steps, done=None, env=None, agent=None)  # this is bad because I'm changing the library function
+    # Phenotype.fitness_func = func
+    # #
+    ff_time = memory_evolution.evaluate.fitness_func_time
+    ff_dist = memory_evolution.evaluate.FitnessDistanceMinimize(target_pos)
+    min_ff_time = ff_time(reward=None, steps=max_steps, done=None, env=None, agent=None)
+    min_ff_dist = -memory_evolution.geometry.euclidean_distance((0., 0.), env.env_size)
+    def fitness_func(*, reward, steps, done, env, agent, **kwargs) -> float:
+        ft = ff_time(reward=reward, steps=steps, done=done, env=env, agent=agent, **kwargs)
+        assert min_ff_time <= ft <= ff_time.max
+        fitness = ft
+        if ft <= min_ff_time:
+            fd = ff_dist(reward=reward, steps=steps, done=done, env=env, agent=agent, **kwargs)
+            assert min_ff_dist <= fd <= ff_dist.max
+            fitness -= fd - min_ff_dist
+        return fitness
+    fitness_func.min = min_ff_time - (ff_dist.max - min_ff_dist)
+    fitness_func.max = ff_time.max
+    print(f"Fitness bounds: min={fitness_func.min} max={fitness_func.max}")
+    Phenotype.fitness_func = fitness_func
+    #
+    Phenotype.eval_num_episodes = 5
     Phenotype.eval_episodes_aggr_func = 'mean'
 
     # dump Phenotype for later use:
