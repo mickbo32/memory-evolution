@@ -1,3 +1,4 @@
+import dill  # pickle extension
 import logging
 import os
 import pickle
@@ -46,6 +47,7 @@ if __name__ == '__main__':
     # LOAD_AGENT = '8536464_2022-05-17_082404.342015+0000'
     # LOAD_AGENT = '8537163_2022-05-17_135612.558440+0000'
     # LOAD_AGENT = '8537772_2022-05-18_112406.667878+0000'
+    LOAD_AGENT = '8539704_2022-05-19_163834.593420+0000'
     LOAD_AGENT_DIR = "logs/saved_logs/no-date/logs/"
     # LOAD_FROM: AVAILABLE_LOADING_METHODS = 'checkpoint'
     LOAD_FROM: AVAILABLE_LOADING_METHODS = 'pickle'
@@ -131,7 +133,9 @@ if __name__ == '__main__':
     # ----- AGENT -----
 
     with open(LOAD_PHENOTYPE, "rb") as f:
-        Phenotype = pickle.load(f)
+        Phenotype, _Phenotype_attrs = dill.load(f)
+        for name, value in _Phenotype_attrs.items():
+            setattr(Phenotype, name, value)
 
     # load from pickle:
     if LOAD_FROM == 'pickle':

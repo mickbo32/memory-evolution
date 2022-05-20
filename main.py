@@ -1,3 +1,4 @@
+import dill  # pickle extension
 import json
 import logging
 import multiprocessing
@@ -76,7 +77,7 @@ if __name__ == '__main__':
     logging_dir, UTCNOW = set_main_logger(file_handler_all=None,
                                           stdout_handler=logging.INFO - 1,  # logging.INFO,
                                           file_handler_now=logging.DEBUG + 5,  # +5 otherwise the log file is too heavy.
-                                          file_handler_now_filename_fmt=JOB_ID + "_{utcnow}.log")
+                                          file_handler_now_filename_fmt=JOB_ID + '_' * bool(JOB_ID) + "{utcnow}.log")
     logging.info(__file__)
 
     # if job_id is passed to the program, use it in the log tag:
@@ -270,11 +271,7 @@ if __name__ == '__main__':
     # Phenotype.eval_episodes_aggr_func = 'median'
     # Phenotype.eval_episodes_aggr_func = 'mean'
     # #
-    # func = memory_evolution.evaluate.fitness_func_time
-    # func.min = func(reward=None, steps=max_steps, done=None, env=None, agent=None)  # this is bad because I'm changing the library function
-    # Phenotype.fitness_func = func
-    # #
-    ff_time = memory_evolution.evaluate.fitness_func_time
+    ff_time = memory_evolution.evaluate.fitness_func_time_minimize
     ff_dist = memory_evolution.evaluate.FitnessDistanceMinimize(target_pos)
     min_ff_time = ff_time(reward=None, steps=max_steps, done=None, env=None, agent=None)
     min_ff_dist = -memory_evolution.geometry.euclidean_distance((0., 0.), env.env_size)
@@ -296,10 +293,35 @@ if __name__ == '__main__':
     Phenotype.eval_episodes_aggr_func = 'mean'
 
     # dump Phenotype for later use:
-    with open(os.path.join(logging_dir, LOG_TAG + '_phenotype.pickle'), "wb") as f:
-        pickle.dump(Phenotype, f)
+    with open(os.path.join(logging_dir, LOG_TAG + '_phenotype.pkl'), "wb") as f:
+        dill.dump((Phenotype,
+                   {'fitness_func': Phenotype.fitness_func,  # use dill to pickle this
+                    'eval_num_episodes': Phenotype.eval_num_episodes,
+                    'eval_episodes_aggr_func': Phenotype.eval_episodes_aggr_func,
+                    }),
+                  f)
+        # pickle do not save classes, but just reference them, so the class attribute will not be saved
+        # thus save the class stuff explicitly
+        # dill module (pickle extension) dumps classes, but only if defined in __main__ (not in modules or other files)
     # construct agent:
     agent = Phenotype(config_path)
+
+    # check phenotype.pickle: (todo move in tests (but also leave here as example))
+    # dill module (pickle extension) dumps classes, but only if defined in __main__ (not in modules or other files)
+    # assert A is pickle.loads(pickle.dumps(A))  # wrong
+    # assert A is not dill.loads(dill.dumps(A))  # good
+    # assert A is not pickle.loads(dill.dumps(A))  # also fine  # here you can use also pickle to load (but dill must be used to dump the class)
+    with open(os.path.join(logging_dir, LOG_TAG + '_phenotype.pkl'), "rb") as f:
+        Phenotype_, _Phenotype_attrs = dill.load(f)
+        # Phenotype_.__dict__.update(_Phenotype_dict)  # not possible with classes, because classes __dict__ is not a dict
+        for name, value in _Phenotype_attrs.items():
+            setattr(Phenotype_, name, value)
+    assert Phenotype is Phenotype_  # both pickle (classes) and dill (module classes)
+    # assert Phenotype.fitness_func is Phenotype_.fitness_func is fitness_func  # pickle
+    assert Phenotype.fitness_func is Phenotype_.fitness_func is not fitness_func  # dill
+    assert memory_evolution.evaluate.fitness_func_total_reward in memory_evolution.evaluate.__dict__.values()
+    # assert fitness_func not in memory_evolution.evaluate.__dict__.values()
+    assert Phenotype_.fitness_func not in memory_evolution.evaluate.__dict__.values()  # dill
 
     logging.info(f"Phenotype: {Phenotype.__qualname__}")
     logging.info(f"Phenotype.fitness_func: {Phenotype.fitness_func}")
@@ -332,7 +354,8 @@ if __name__ == '__main__':
     agent.set_env(env)
     winner = agent.evolve(500, render=render, checkpointer=checkpointer, parallel=parallel,
                           filename_tag=LOG_TAG + '_', path_dir=logging_dir, image_format='png',
-                          view_best=False)
+                          view_best=False,
+                          stats_ylog=False)
     # fixme: todo: parallel=True use the same seed for the environment in each process
     #     (but for the agent is correctly using a different seed it seems)
 

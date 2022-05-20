@@ -55,12 +55,12 @@ def fitness_func_total_reward(*, reward, steps, done, env, agent, **kwargs) -> f
     return reward
 
 
-def fitness_func_time(*, reward, steps, done, env, agent, **kwargs) -> float:
+def fitness_func_time_minimize(*, reward, steps, done, env, agent, **kwargs) -> float:
     """-T (-inf,0], where T are the timesteps [0,+inf)
     attrs: max = 0.0;
     """
     return -steps
-fitness_func_time.max = 0.
+fitness_func_time_minimize.max = 0.
 
 
 def fitness_func_time_inverse(*, reward, steps, done, env, agent, **kwargs) -> float:
@@ -87,7 +87,7 @@ def minimize(f):
     """decorator to transform a function to minimize in a function to maximize (the returned function),
     using -1 multiplication (just putting a minus in front of f): returns h := -f
     """
-    # @functools.wraps(f)
+    @functools.wraps(f)
     def f_maximize(*args, **kwargs):
         return -f(*args, **kwargs)
     return f_maximize
@@ -99,7 +99,7 @@ def minimize_inverse(f):
     note: if f(x) == 0: return +inf
     note: the domain of the new function accepts only non-negative numbers (it raises an error otherwise)
     """
-    # @functools.wraps(f)
+    @functools.wraps(f)
     def f_maximize(*args, **kwargs):
         y = f(*args, **kwargs)
         if y < 0:
@@ -114,7 +114,7 @@ def minimize_exp(f):
     """decorator to transform a function to minimize in a function to maximize (the returned function),
     using exp: returns h := exp(-f)
     """
-    # @functools.wraps(f)
+    @functools.wraps(f)
     def f_maximize(*args, **kwargs):
         return math.exp(-f(*args, **kwargs))
     return f_maximize
@@ -122,6 +122,15 @@ def minimize_exp(f):
 
 class BaseFitness(Callable):
     """Use this class to create your custom fitness subclass."""
+
+    def __init__(self):
+        # def instance minmax:
+        # this is for pickling (pickle doesn't pickle class attributes but only instance attributes)
+        # todo: should be tested, moreover nested pickling should be tested
+        if hasattr(type(self), 'min'):
+            self.min = type(self).min
+        if hasattr(type(self), 'max'):
+            self.max = type(self).max
 
     @abstractmethod
     # def __call__(self, **kwargs) -> float:
@@ -190,6 +199,7 @@ class FitnessDistanceInverse(BaseFitness):
     min = 0.0
 
     def __init__(self, pos: Iterable):
+        super().__init__()
         if not isinstance(pos, Pos):
             if not isinstance(pos, Iterable):
                 raise TypeError(type(pos))
@@ -236,6 +246,7 @@ class FitnessDistanceMinimize(BaseFitness):
     max = 0.0
 
     def __init__(self, pos: Iterable):
+        super().__init__()
         if not isinstance(pos, Pos):
             if not isinstance(pos, Iterable):
                 raise TypeError(type(pos))

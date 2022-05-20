@@ -33,7 +33,7 @@ import memory_evolution
 from memory_evolution import visualize
 from memory_evolution.agents import BaseAgent
 from memory_evolution.agents.exceptions import EnvironmentNotSetError
-from memory_evolution.evaluate import evaluate_agent, FitnessRewardAndSteps
+from memory_evolution.evaluate import evaluate_agent, fitness_func_total_reward, fitness_func_time_minimize
 from memory_evolution.utils import get_color_str, normalize_observation
 from memory_evolution.utils import MustOverride, override
 from .exceptions import NotEvolvedError
@@ -59,6 +59,14 @@ def _top_level_wrapper(low_level_func):
 
 
 class BaseNeatAgent(BaseAgent, ABC):
+
+    # fitness_func is class attribute, because all agents of the same
+    # type (or in same population) should be evaluated in the same way
+    # (so that the fitnesses of two agents can be compared).
+    fitness_func: inspect.signature(evaluate_agent).parameters['fitness_func'].annotation = fitness_func_total_reward
+    eval_num_episodes: inspect.signature(evaluate_agent).parameters['episodes'].annotation = 5
+    eval_episodes_aggr_func: inspect.signature(evaluate_agent).parameters['episodes_aggr_func'].annotation = 'mean'
+    # You can access the dict of annotations with: print(type(self).__annotations__)
 
     @classmethod
     @property
@@ -172,14 +180,6 @@ class BaseNeatAgent(BaseAgent, ABC):
             )
         assert self._phenotype is not None, (self._genome, self._phenotype)
         return NotImplemented
-
-    # fitness_func is class attribute, because all agents of the same
-    # type (or in same population) should be evaluated in the same way
-    # (so that the fitnesses of two agents can be compared).
-    fitness_func: inspect.signature(evaluate_agent).parameters['fitness_func'].annotation = FitnessRewardAndSteps(4., 6., normalize_weights=False)
-    eval_num_episodes: inspect.signature(evaluate_agent).parameters['episodes'].annotation = 5
-    eval_episodes_aggr_func: inspect.signature(evaluate_agent).parameters['episodes_aggr_func'].annotation = 'median'
-    # You can access the dict of annotations with: print(type(self).__annotations__)
 
     # def get_eval_genome_func()
     # @classmethod
@@ -488,6 +488,7 @@ class BaseNeatAgent(BaseAgent, ABC):
                path_dir: str = '',
                image_format: str = 'svg',
                view_best: bool = False,  # render the best agent and show stats and genome by opening plots
+               stats_ylog: bool = True,
                ) -> tuple[neat.genome.DefaultGenome, neat.statistics.StatisticsReporter]:
         """Evolve a population of agents of the type of self and then return
         the best genome. The best genome is also saved in self. It returns also
@@ -562,7 +563,7 @@ class BaseNeatAgent(BaseAgent, ABC):
             pickle.dump(stats, f)
 
         # Display stats on the evolution performed.
-        self.visualize_evolution(stats, stats_ylog=True, view=view_best,
+        self.visualize_evolution(stats, stats_ylog=stats_ylog, view=view_best,
                                  filename_stats=make_filename("fitness." + image_format),
                                  filename_speciation=make_filename("speciation." + image_format))
 

@@ -1,3 +1,4 @@
+import dill  # pickle extension
 from functools import reduce
 from operator import mul
 import os
@@ -45,10 +46,11 @@ if __name__ == '__main__':
     # LOAD_AGENT = '8525497_2022-05-08_144349.993182+0000'  # vision_channels = 1
     # LOAD_AGENT = '8527358_2022-05-09_104749.699383+0000'  # vision_channels = 3
     LOAD_AGENT = '8536464_2022-05-17_082404.342015+0000'
+    LOAD_AGENT = '8539704_2022-05-19_163834.593420+0000'
     LOAD_AGENT_DIR = "logs/saved_logs/no-date/logs/"
     N_EPISODES = 2
-    # LOAD_FROM: AVAILABLE_LOADING_METHODS = 'pickle'
-    LOAD_FROM: AVAILABLE_LOADING_METHODS = 'checkpoint'
+    LOAD_FROM: AVAILABLE_LOADING_METHODS = 'pickle'
+    # LOAD_FROM: AVAILABLE_LOADING_METHODS = 'checkpoint'
     LOGGING_DIR = 'logs'
     # ---
     # override variables if provided as program arguments
@@ -115,9 +117,10 @@ if __name__ == '__main__':
 
     # ----- AGENT -----
 
-
     with open(LOAD_PHENOTYPE, "rb") as f:
-        Phenotype = pickle.load(f)
+        Phenotype, _Phenotype_attrs = dill.load(f)
+        for name, value in _Phenotype_attrs.items():
+            setattr(Phenotype, name, value)
 
     # load from pickle:
     if LOAD_FROM == 'pickle':
@@ -157,8 +160,12 @@ if __name__ == '__main__':
         print('Loading stats...')
         stats = pickle.load(f)
     print(stats)
+    assert all([(max(_genome_fitness
+                     for _specie in _species.values()
+                     for _genome_fitness in _specie.values()) == _best_genome.fitness)
+                for _species, _best_genome in zip(stats.generation_statistics, stats.most_fit_genomes)])
 
-    agent.visualize_evolution(stats, stats_ylog=True, view=True,
+    agent.visualize_evolution(stats, stats_ylog=False, view=True,
                               filename_stats=os.path.join(LOGGING_DIR, LOADED_UTCNOW + "_fitness.png"),
                               filename_speciation=os.path.join(LOGGING_DIR, LOADED_UTCNOW + "_speciation.png"))
 
