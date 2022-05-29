@@ -334,11 +334,13 @@ class BaseNeatAgent(BaseAgent, ABC):
             output_nodes = self.config.genome_config.output_keys
             _output_nodes_set = set(output_nodes)
             hidden_nodes = [n.key for n in self.genome.nodes.values() if n.key not in _output_nodes_set]
+            # build graph
             graph = {k: [] for k in (*input_nodes, *hidden_nodes, *output_nodes)}
             for cg in self.genome.connections.values():
                 in_node, out_node = cg.key
                 graph[in_node].append(out_node)
-            def bfs(graph, nodes):
+            # bfs function; move outside, so it is more efficient instead of building at each call the function again.
+            def _old_bad_bfs(graph, nodes):  # bad and inefficient and not a real bfs if considering starting nodes
                 assert list(graph.keys())[:len(input_nodes)] == input_nodes
                 node_rank = {}
                 q = deque()
@@ -354,12 +356,28 @@ class BaseNeatAgent(BaseAgent, ABC):
                                 node_rank[v] = level + 1
                                 q.append(v)
                 return node_rank
+            def bfs(graph, starting_nodes):
+                assert list(graph.keys())[:len(input_nodes)] == input_nodes
+                node_rank = {node: 0 for node in starting_nodes}
+                q = deque(starting_nodes)
+                while q:
+                    u = q.popleft()
+                    level = node_rank[u]
+                    for v in graph[u]:
+                        if v not in node_rank:
+                            node_rank[v] = level + 1
+                            q.append(v)
+                return node_rank
+            # starting nodes for bfs are the ones which have no incoming connections,
+            # or the only incoming connections are recurrent on themselves.
             starting_nodes = set(graph.keys())
             for cg in self.genome.connections.values():
                 in_node, out_node = cg.key
-                if out_node in starting_nodes:
+                if out_node in starting_nodes and in_node != out_node:
                     starting_nodes.remove(out_node)
+            # compute nodes ranks with bfs
             node_rank = bfs(graph, starting_nodes)
+            assert node_rank == _old_bad_bfs(graph, starting_nodes), (node_rank, _old_bad_bfs(graph, starting_nodes))
             max_rank = max(node_rank.values())
             assert min(node_rank.values()) == 0
             rank_hidden = defaultdict(list)

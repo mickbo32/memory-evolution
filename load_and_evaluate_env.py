@@ -48,6 +48,8 @@ if __name__ == '__main__':
     # LOAD_AGENT = '8537163_2022-05-17_135612.558440+0000'
     # LOAD_AGENT = '8537772_2022-05-18_112406.667878+0000'
     LOAD_AGENT = '8539704_2022-05-19_163834.593420+0000'
+    LOAD_AGENT = '8541080_2022-05-20_214011.159858+0000'
+    LOAD_AGENT = '8547986_2022-05-27_131437.320058+0000'
     LOAD_AGENT_DIR = "logs/saved_logs/no-date/logs/"
     # LOAD_FROM: AVAILABLE_LOADING_METHODS = 'checkpoint'
     LOAD_FROM: AVAILABLE_LOADING_METHODS = 'pickle'
@@ -75,7 +77,7 @@ if __name__ == '__main__':
 
     # compute runtime consts:
     LOAD_ENV = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_env.pickle')
-    LOAD_PHENOTYPE = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_phenotype.pickle')
+    LOAD_PHENOTYPE = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_phenotype.pkl')
     if LOAD_FROM == 'pickle':
         CONFIG_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_config')
         LOAD_AGENT_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_genome.pickle')
@@ -98,7 +100,7 @@ if __name__ == '__main__':
     # logging settings:
     logging_dir, UTCNOW = set_main_logger(file_handler_all=None,
                                           logging_dir=LOGGING_DIR,
-                                          stdout_handler=logging.INFO,
+                                          stdout_handler=logging.INFO - 2,
                                           file_handler_now_filename_fmt=LOAD_AGENT + "_LOADED__now_{utcnow}.log")
     del LOGGING_DIR  # from now on use 'logging_dir' instead.
     logging.info(__file__)
@@ -173,19 +175,32 @@ if __name__ == '__main__':
     #                save_gif_name=RANDOM_AGENT_UTCNOW + '.gif')
 
     agent.set_env(env)
-    # evaluate_agent(agent, env, episodes=2, render=True,
-    #                save_gif=False)
-    # evaluate_agent(agent, env, episodes=2, render=True,
-    #                save_gif=True,
-    #                save_gif_dir=os.path.join(logging_dir, 'frames_' + LOADED_UTCNOW),
-    #                save_gif_name=LOADED_UTCNOW + '.gif')
-    evaluate_agent(agent, env, episodes=N_EPISODES, render=RENDER,
-                   save_gif=True,
-                   save_gif_name=os.path.join(logging_dir, LOADED_UTCNOW + '_frames.gif'))
-    # Note: if you run twice evaluate_agent with the same name it will overwrite the previous gif
-    #   (but if save_gif_dir is provided it will raise an error because the directory already exists).
+
+    if N_EPISODES > 0:
+        # evaluate_agent(agent, env, episodes=2, render=True,
+        #                save_gif=False)
+        # evaluate_agent(agent, env, episodes=2, render=True,
+        #                save_gif=True,
+        #                save_gif_dir=os.path.join(logging_dir, 'frames_' + LOADED_UTCNOW),
+        #                save_gif_name=LOADED_UTCNOW + '.gif')
+        evaluate_agent(agent, env, episodes=N_EPISODES, render=RENDER,
+                       save_gif=True,
+                       save_gif_name=os.path.join(logging_dir, LOADED_UTCNOW + '_frames.gif'))
+        # Note: if you run twice evaluate_agent with the same name it will overwrite the previous gif
+        #   (but if save_gif_dir is provided it will raise an error because the directory already exists).
 
     # ----- CLOSING AND REPORTING -----
+
+    # testing the agent accuracy:
+    if RENDER:
+        accuracy = memory_evolution.evaluate.test_agent_first_arm_accuracy(
+            agent, env, episodes=10,
+            render=True)
+        print(f"test_agent_first_arm_accuracy: {accuracy}")
+    accuracy = memory_evolution.evaluate.test_agent_first_arm_accuracy(
+        agent, env, episodes=100,
+        render=False)
+    print(f"test_agent_first_arm_accuracy: {accuracy}")
 
     env.close()
 

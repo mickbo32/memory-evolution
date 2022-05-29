@@ -274,7 +274,7 @@ class FitnessDistanceMinimize(BaseFitness):
         assert isinstance(last_agent_pos, (Pos, np.ndarray, Sequence)), (type(last_agent_pos), last_agent_pos)
         assert len(target_pos) == len(last_agent_pos), (len(target_pos), len(last_agent_pos))
         dist = euclidean_distance(last_agent_pos, target_pos)
-        logging.log(logging.DEBUG + 5, f"agent distance from target: {dist}")
+        logging.log(logging.DEBUG + 4, f"agent distance from target: {dist}")
         assert dist >= 0
         fitness = -dist
         return fitness

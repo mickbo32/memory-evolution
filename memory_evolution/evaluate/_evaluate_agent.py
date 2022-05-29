@@ -42,14 +42,14 @@ tracking_actual_time_logger = TrackingVal(logging.getLogger(), _track_level, _tr
 def evaluate_agent(agent,
                    env: gym.Env,
                    episodes: int = 1,
-                   episodes_aggr_func: Literal['min', 'max', 'mean', 'median'] = 'min',
+                   episodes_aggr_func: Literal['min', 'max', 'mean', 'median', None] = 'min',
                    fitness_func: Callable[..., float] = fitness_func_total_reward,
                    max_actual_time_per_episode: Optional[Union[int, float]] = None,
                    render: bool = False,
                    save_gif: bool = False,
                    save_gif_dir: str = None,
                    save_gif_name: str = "frames.gif",
-                   ) -> float:
+                   ) -> Union[float, np.ndarray]:
     """Evaluate agent in a gym environment and return the fitness of the agent.
 
     Args:
@@ -63,6 +63,7 @@ def evaluate_agent(agent,
         episodes_aggr_func: function to use to aggregate all the fitness
             values collected for each single independent episode (default is
             'min': The genome's fitness is its worst performance across all runs).
+            If ``None`` return the array with the fitness of each episode.
         fitness_func: callable function to compute the fitness of a single episode,
             this function is called at the end of each episode, it takes **kwargs
             as arguments, and it should return a float, the fitness of the episode;
@@ -271,8 +272,16 @@ def evaluate_agent(agent,
                 f" (in {(end_time_episode - start_time_episode) / 10 ** 9} actual seconds).")
     if save_gif and save_gif_dir is None:
         temp_dir.cleanup()
-    final_fitness = getattr(np, episodes_aggr_func)(fitnesses)
-    # env.close()  # use it only in main, otherwise it will be closed and
-    # opened again each time it is evaluated.
+    if episodes_aggr_func is not None:
+        final_fitness = getattr(np, episodes_aggr_func)(fitnesses)
+    else:
+        final_fitness = np.asanyarray(fitnesses)
+        if final_fitness.dtype != float and final_fitness.dtype != int and final_fitness.dtype != bool:
+            # note: if for example your machine float is float64, but final_fitness.dtype is float32,
+            #   final_fitness.dtype will not be equal to the python float,
+            #   but this should never be the case anyway because your 'fitness_func' should return a python float,
+            #   not any floating-like object
+            raise RuntimeError("'fitness_func' returned at least a non-float (and non-int and non-bool) object",
+                               final_fitness.dtype)
     return final_fitness
 

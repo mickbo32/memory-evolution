@@ -16,7 +16,7 @@ from numpy.random import SeedSequence, default_rng
 import pygame as pg
 from shapely.affinity import rotate, scale, translate
 from shapely.geometry import Point, Polygon, LineString, MultiLineString, MultiPolygon
-from shapely.ops import unary_union, triangulate
+from shapely.ops import unary_union
 
 import memory_evolution
 from memory_evolution.geometry import is_simple_polygon, Pos
@@ -25,6 +25,20 @@ from memory_evolution.utils import MustOverride, override
 from memory_evolution.utils import EmptyDefaultValueError, get_default_value
 
 from .base_foraging import BaseForagingEnv, Agent, FoodItem, get_valid_item_positions_mask
+
+
+# todo: move in tests:
+def __test():
+    plg = Polygon(((0,0), (1,1), (0,1)))
+    try:
+        plg.boundary.coords[0] = (2, 2)
+    except TypeError as err:
+        assert err.args == ("'CoordinateSequence' object does not support item assignment",)
+    else:
+        raise AssertionError("Polygon should be read-only (immutable), "
+                             "otherwise code below is not good for the @property valid_platform,"
+                             "which could be changed by the user, instead this should NOT be allowed.")
+__test()
 
 
 class MazeForagingEnv(BaseForagingEnv):
@@ -110,6 +124,12 @@ class MazeForagingEnv(BaseForagingEnv):
     @override
     def maximum_reward(self):
         return super().maximum_reward
+
+    @property
+    def platform(self):
+        """Valid platform in which the agent can move.
+        Platform is a simple polygon, where each point in it is reachable from any other point in it."""
+        return self._platform
 
     def get_platform_from_borders(self, borders: Iterable):
 

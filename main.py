@@ -282,14 +282,15 @@ if __name__ == '__main__':
         if ft <= min_ff_time:
             fd = ff_dist(reward=reward, steps=steps, done=done, env=env, agent=agent, **kwargs)
             assert min_ff_dist <= fd <= ff_dist.max
-            fitness -= fd - min_ff_dist
+            fitness -= ff_dist.max - fd
         return fitness
     fitness_func.min = min_ff_time - (ff_dist.max - min_ff_dist)
     fitness_func.max = ff_time.max
+    assert fitness_func.min < min_ff_time, (fitness_func.min, min_ff_time, ff_dist.max, min_ff_dist)
     print(f"Fitness bounds: min={fitness_func.min} max={fitness_func.max}")
     Phenotype.fitness_func = fitness_func
     #
-    Phenotype.eval_num_episodes = 5
+    Phenotype.eval_num_episodes = 5  # 50
     Phenotype.eval_episodes_aggr_func = 'mean'
 
     # dump Phenotype for later use:
@@ -352,12 +353,14 @@ if __name__ == '__main__':
                                          LOG_TAG + '_neat-checkpoint-'))
 
     agent.set_env(env)
-    winner = agent.evolve(500, render=render, checkpointer=checkpointer, parallel=parallel,
-                          filename_tag=LOG_TAG + '_', path_dir=logging_dir, image_format='png',
-                          view_best=False,
-                          stats_ylog=False)
+    logging.info("Evolving...")
+    winner, stats = agent.evolve(500, render=render, checkpointer=checkpointer, parallel=parallel,
+                                 filename_tag=LOG_TAG + '_', path_dir=logging_dir, image_format='png',
+                                 view_best=False,
+                                 stats_ylog=False)
     # fixme: todo: parallel=True use the same seed for the environment in each process
     #     (but for the agent is correctly using a different seed it seems)
+    logging.info("Evolution finished.")
 
     # render the best agent:
     evaluate_agent(agent, env, episodes=5, render=render_best,
@@ -365,6 +368,18 @@ if __name__ == '__main__':
                    save_gif_name=os.path.join(logging_dir, LOG_TAG + '_frames.gif'))
 
     # ----- CLOSING AND REPORTING -----
+
+    # testing the agent first arm accuracy:
+    accuracy = memory_evolution.evaluate.test_agent_first_arm_accuracy(
+        agent, env, episodes=100,
+        render=False)
+    print(f"test_agent_first_arm_accuracy: {accuracy}")
+
+    # test general target-reached rate (to discriminate bad v.s. border-follower v.s. allocentric successful agents):
+    # TODO
+
+    # fitness:
+    print(f"BestGenomeFitness: {winner.fitness}")
 
     env.close()
 

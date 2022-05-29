@@ -47,6 +47,8 @@ if __name__ == '__main__':
     # LOAD_AGENT = '8527358_2022-05-09_104749.699383+0000'  # vision_channels = 3
     LOAD_AGENT = '8536464_2022-05-17_082404.342015+0000'
     LOAD_AGENT = '8539704_2022-05-19_163834.593420+0000'
+    LOAD_AGENT = '8541080_2022-05-20_214011.159858+0000'
+    LOAD_AGENT = '8547986_2022-05-27_131437.320058+0000'
     LOAD_AGENT_DIR = "logs/saved_logs/no-date/logs/"
     N_EPISODES = 2
     LOAD_FROM: AVAILABLE_LOADING_METHODS = 'pickle'
@@ -73,7 +75,7 @@ if __name__ == '__main__':
 
     # compute runtime consts:
     LOAD_ENV = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_env.pickle')
-    LOAD_PHENOTYPE = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_phenotype.pickle')
+    LOAD_PHENOTYPE = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_phenotype.pkl')
     LOAD_STATS = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_stats.pickle')
     if LOAD_FROM == 'pickle':
         CONFIG_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_config')

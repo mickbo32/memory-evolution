@@ -12,4 +12,5 @@ from ._fitnesses import (
     FitnessDistanceMinimize,
     FitnessRewardAndSteps,
 )
+from ._test_agent import test_agent_first_arm_accuracy
 
