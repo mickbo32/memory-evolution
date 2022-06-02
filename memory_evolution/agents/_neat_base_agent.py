@@ -495,7 +495,7 @@ class BaseNeatAgent(BaseAgent, ABC):
             dot.edge('rank_o', name, _attributes={'style': _rank_style, 'lhead': 'cluster_outputs'})
 
         dot.render(filename, view=view)
-        print(dot.source)
+        # print(dot.source)
 
     def evolve(self,
                n=None,
@@ -586,7 +586,7 @@ class BaseNeatAgent(BaseAgent, ABC):
                                  filename_speciation=make_filename("speciation." + image_format))
 
         # Display the winning genome.
-        print('\nBest genome:\n{!s}'.format(winner))
+        # print('\nBest genome:\n{!s}'.format(winner))  # it is printed already by self.visualize_genome()
         self.visualize_genome(winner, view=view_best, name='Best Genome', filename=make_filename("winner-genome.gv"),
                               default_input_node_color='palette',
                               format=image_format)

@@ -271,26 +271,32 @@ if __name__ == '__main__':
     # Phenotype.eval_episodes_aggr_func = 'median'
     # Phenotype.eval_episodes_aggr_func = 'mean'
     # #
+    USER_DEFINED_FITNESS_FUNC = False
     ff_time = memory_evolution.evaluate.fitness_func_time_minimize
     ff_dist = memory_evolution.evaluate.FitnessDistanceMinimize(target_pos)
     min_ff_time = ff_time(reward=None, steps=max_steps, done=None, env=None, agent=None)
     min_ff_dist = -memory_evolution.geometry.euclidean_distance((0., 0.), env.env_size)
-    def fitness_func(*, reward, steps, done, env, agent, **kwargs) -> float:
-        ft = ff_time(reward=reward, steps=steps, done=done, env=env, agent=agent, **kwargs)
-        assert min_ff_time <= ft <= ff_time.max
-        fitness = ft
-        if ft <= min_ff_time:
-            fd = ff_dist(reward=reward, steps=steps, done=done, env=env, agent=agent, **kwargs)
-            assert min_ff_dist <= fd <= ff_dist.max
-            fitness -= ff_dist.max - fd
-        return fitness
-    fitness_func.min = min_ff_time - (ff_dist.max - min_ff_dist)
-    fitness_func.max = ff_time.max
-    assert fitness_func.min < min_ff_time, (fitness_func.min, min_ff_time, ff_dist.max, min_ff_dist)
-    print(f"Fitness bounds: min={fitness_func.min} max={fitness_func.max}")
-    Phenotype.fitness_func = fitness_func
+    if USER_DEFINED_FITNESS_FUNC:
+        def fitness_func(*, reward, steps, done, env, agent, **kwargs) -> float:
+            ft = ff_time(reward=reward, steps=steps, done=done, env=env, agent=agent, **kwargs)
+            assert min_ff_time <= ft <= ff_time.max
+            fitness = ft
+            if ft <= min_ff_time:
+                fd = ff_dist(reward=reward, steps=steps, done=done, env=env, agent=agent, **kwargs)
+                assert min_ff_dist <= fd <= ff_dist.max
+                fitness -= ff_dist.max - fd
+            # print(fitness, fd if 'fd' in locals() else None)
+            return fitness
+        fitness_func.min = min_ff_time - (ff_dist.max - min_ff_dist)
+        fitness_func.max = ff_time.max
+        assert fitness_func.min < min_ff_time, (fitness_func.min, min_ff_time, ff_dist.max, min_ff_dist)
+        print(f"Fitness bounds: min={fitness_func.min} max={fitness_func.max}")
+        Phenotype.fitness_func = fitness_func
+    else:
+        fitness_func = ff_time
+        Phenotype.fitness_func = fitness_func
     #
-    Phenotype.eval_num_episodes = 5  # 50
+    Phenotype.eval_num_episodes = 20
     Phenotype.eval_episodes_aggr_func = 'mean'
 
     # dump Phenotype for later use:
@@ -318,11 +324,13 @@ if __name__ == '__main__':
         for name, value in _Phenotype_attrs.items():
             setattr(Phenotype_, name, value)
     assert Phenotype is Phenotype_  # both pickle (classes) and dill (module classes)
-    # assert Phenotype.fitness_func is Phenotype_.fitness_func is fitness_func  # pickle
-    assert Phenotype.fitness_func is Phenotype_.fitness_func is not fitness_func  # dill
+    if USER_DEFINED_FITNESS_FUNC:
+        # assert Phenotype.fitness_func is Phenotype_.fitness_func is fitness_func  # pickle
+        assert Phenotype.fitness_func is Phenotype_.fitness_func is not fitness_func  # dill
     assert memory_evolution.evaluate.fitness_func_total_reward in memory_evolution.evaluate.__dict__.values()
-    # assert fitness_func not in memory_evolution.evaluate.__dict__.values()
-    assert Phenotype_.fitness_func not in memory_evolution.evaluate.__dict__.values()  # dill
+    if USER_DEFINED_FITNESS_FUNC:
+        # assert fitness_func not in memory_evolution.evaluate.__dict__.values()
+        assert Phenotype_.fitness_func not in memory_evolution.evaluate.__dict__.values()  # dill
 
     logging.info(f"Phenotype: {Phenotype.__qualname__}")
     logging.info(f"Phenotype.fitness_func: {Phenotype.fitness_func}")
@@ -366,6 +374,13 @@ if __name__ == '__main__':
     evaluate_agent(agent, env, episodes=5, render=render_best,
                    save_gif=True,
                    save_gif_name=os.path.join(logging_dir, LOG_TAG + '_frames.gif'))
+    # note: if you evolve the agent with parallel execution, agent.evolve(parallel=True),
+    #   all the program variables will be copied and will have an independent life for each process,
+    #   thus the environment will be used in each process with a different cache, and when each process
+    #   is ended, the env here in the main will still be the env newly created which has never been reset before,
+    #   thus if you evolve the agent with parallel execution, agent.evolve(parallel=True),
+    #   evaluate_agent() here will reset the environment for the first time ever for the main process
+    #   and cache will be empty because the env was never used before in the main process.
 
     # ----- CLOSING AND REPORTING -----
 
