@@ -270,3 +270,54 @@ def test_agent_first_arm_accuracy(
     logging.info(f"test_agent_first_arm_accuracy: {accuracy}")
     return accuracy
 
+
+def fitness_func_target_reached(*, reward, steps, done, env, agent, **kwargs) -> float:
+    """Returns 1.0 if target reached, 0.0 if not."""
+    assert done
+    return float(env.food_items_collected == env.n_food_items)
+fitness_func_target_reached.min = 0.
+fitness_func_target_reached.max = 1.
+
+
+def test_agent_target_reached_rate(
+        agent,
+        env: RadialArmMaze,
+        episodes: int = 100,
+        max_actual_time_per_episode: Optional[Union[int, float]] = None,
+        render: bool = False,
+):
+    """Evaluate the agent for ``episodes`` episodes in a RadialArmMaze
+    and return the rate of successful agent trails reaching eventually
+    the target in time.
+    
+    # together with test_agent_first_arm_accuracy, can be used to discriminate
+    # bad v.s. border-follower v.s. allocentric/egocentric successful agents
+
+    Note: env must be a RadialArmMaze with a single target in one arm.
+    """
+    logging.info("test_agent_target_reached_rate...")
+    if not isinstance(env, RadialArmMaze):
+        raise TypeError(f"'env' should be a RadialArmMaze, instead got {type(env)}")
+    if env.n_food_items != 1:
+        raise ValueError(f"'env.n_food_items' must be 1, instead is {env.n_food_items}")
+
+    successes = evaluate_agent(
+        agent=agent,
+        env=env,
+        episodes=episodes,
+        episodes_aggr_func=None,
+        fitness_func=fitness_func_target_reached,
+        max_actual_time_per_episode=max_actual_time_per_episode,
+        render=render,
+        save_gif=False,
+    )
+    assert len(successes) == episodes, (len(successes), episodes)
+    assert ((successes == 0.) | (successes == 1.)).all(None), successes
+    n_successes = successes.sum(None)
+    assert 0 <= n_successes <= episodes, (n_successes, episodes)
+
+    success_rate = n_successes / episodes
+    assert 0. <= success_rate <= 1., (success_rate, successes, episodes)
+    logging.info(f"test_agent_target_reached_rate: {success_rate}")
+    return success_rate
+

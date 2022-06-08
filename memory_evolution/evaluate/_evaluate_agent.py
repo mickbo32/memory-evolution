@@ -98,8 +98,8 @@ def evaluate_agent(agent,
         RuntimeError: if ``max_iters_per_episode`` is not ``None`` and
             episode has not finished after ``max_iters_per_episode`` timesteps.
     """
-    if not isinstance(episodes_aggr_func, str):
-        raise TypeError(f"'episodes_aggr_func' should be str, instead got {type(episodes_aggr_func)}")
+    if episodes_aggr_func is not None and not isinstance(episodes_aggr_func, str):
+        raise TypeError(f"'episodes_aggr_func' should be str or None, instead got {type(episodes_aggr_func)}")
     if not isinstance(fitness_func, Callable):
         raise TypeError(f"'fitness_func' should be Callable, instead got {type(fitness_func)}")
 

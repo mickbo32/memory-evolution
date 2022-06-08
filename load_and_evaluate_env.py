@@ -37,7 +37,7 @@ AVAILABLE_LOADING_METHODS = Literal['pickle', 'checkpoint']
 if __name__ == '__main__':
 
     # ----- Settings -----
-    RENDER = False  # render or just save gif files
+    RENDER = True  # False  # render or just save gif files
     # ---
     # LOAD_AGENT = '8492571_2022-04-20_212136.999729+0000'
     LOAD_AGENT = '8525497_2022-05-08_144349.993182+0000'
@@ -53,7 +53,7 @@ if __name__ == '__main__':
     LOAD_AGENT_DIR = "logs/saved_logs/no-date/logs/"
     # LOAD_FROM: AVAILABLE_LOADING_METHODS = 'checkpoint'
     LOAD_FROM: AVAILABLE_LOADING_METHODS = 'pickle'
-    N_EPISODES = 5
+    N_EPISODES = 0  # 5
     LOGGING_DIR = 'logs'
     # ---
     # CHECKPOINT_NUMBER = None  # if None, load the last checkpoint
@@ -191,7 +191,7 @@ if __name__ == '__main__':
 
     # ----- CLOSING AND REPORTING -----
 
-    # testing the agent accuracy:
+    # testing the agent accuracy (first arm accuracy):
     if RENDER:
         accuracy = memory_evolution.evaluate.test_agent_first_arm_accuracy(
             agent, env, episodes=10,
@@ -201,6 +201,20 @@ if __name__ == '__main__':
         agent, env, episodes=100,
         render=False)
     print(f"test_agent_first_arm_accuracy: {accuracy}")
+
+    # test general target-reached rate (to discriminate bad v.s. border-follower v.s. allocentric/egocentric successful agents):
+    if RENDER:
+        target_reached_rate = memory_evolution.evaluate.test_agent_target_reached_rate(
+            agent, env, episodes=10,
+            render=True)
+        print(f"test_agent_target_reached_rate: {target_reached_rate}")
+    target_reached_rate = memory_evolution.evaluate.test_agent_target_reached_rate(
+        agent, env, episodes=100,
+        render=False)
+    print(f"test_agent_target_reached_rate: {target_reached_rate}")
+
+    # fitness:
+    print(f"Fitness: {agent.genome.fitness}")
 
     env.close()
 
