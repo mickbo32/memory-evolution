@@ -27,16 +27,15 @@ from memory_evolution.evaluate import evaluate_agent
 from memory_evolution.logging import get_utcnow_str
 from memory_evolution.utils import get_color_str, denormalize_observation
 
-# matplotlib settings:
-isRunningInPyCharm = "PYCHARM_HOSTED" in os.environ
-if isRunningInPyCharm:
-    mpl.use('Qt5Agg')  # Change matplotlib backend to show correctly in PyCharm.
-
-# other consts:
-AVAILABLE_LOADING_METHODS = Literal['pickle', 'checkpoint']
+from memory_evolution.load import load_env, load_agent, get_checkpoint_number, AVAILABLE_LOADING_METHODS
 
 
 if __name__ == '__main__':
+
+    # matplotlib settings:
+    isRunningInPyCharm = "PYCHARM_HOSTED" in os.environ
+    if isRunningInPyCharm:
+        mpl.use('Qt5Agg')  # Change matplotlib backend to show correctly in PyCharm.
 
     # ----- Settings -----
     RENDER = False  # render or just save gif files
@@ -49,7 +48,8 @@ if __name__ == '__main__':
     LOAD_AGENT = '8539704_2022-05-19_163834.593420+0000'
     LOAD_AGENT = '8541080_2022-05-20_214011.159858+0000'
     LOAD_AGENT = '8547986_2022-05-27_131437.320058+0000'
-    LOAD_AGENT_DIR = "logs/saved_logs/no-date/logs/"
+    LOAD_AGENT = '8552035_2022-05-31_094211.507686+0000'
+    LOAD_AGENT_DIR = "logs/saved_logs/outputs-link/no-date0/logs/"
     N_EPISODES = 2
     LOAD_FROM: AVAILABLE_LOADING_METHODS = 'pickle'
     # LOAD_FROM: AVAILABLE_LOADING_METHODS = 'checkpoint'
@@ -69,32 +69,10 @@ if __name__ == '__main__':
     else:
         raise RuntimeError(sys.argv)
 
-    assert LOAD_FROM in typing.get_args(AVAILABLE_LOADING_METHODS), LOAD_FROM
-
     CHECKPOINT_NUMBER = None  # if None, load the last checkpoint
 
     # compute runtime consts:
-    LOAD_ENV = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_env.pickle')
-    LOAD_PHENOTYPE = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_phenotype.pkl')
     LOAD_STATS = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_stats.pickle')
-    if LOAD_FROM == 'pickle':
-        CONFIG_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_config')
-        LOAD_AGENT_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_genome.pickle')
-        assert os.path.isfile(LOAD_AGENT_PATH), LOAD_AGENT_PATH
-    elif LOAD_FROM == 'checkpoint':
-        _LOAD_FROM_CHECKPOINT_TAG = '_neat-checkpoint-'
-        if CHECKPOINT_NUMBER is None:
-            prefix = LOAD_AGENT + _LOAD_FROM_CHECKPOINT_TAG
-            checkpoint_numbers = sorted([int(f.removeprefix(prefix))
-                                         for f in os.listdir(LOAD_AGENT_DIR)
-                                         if f.startswith(prefix)])
-            print(f"Checkpoints found (generation_number) for agent {LOAD_AGENT}:", checkpoint_numbers)
-            CHECKPOINT_NUMBER = checkpoint_numbers[-1]  # max(checkpoint_numbers)
-            print('CHECKPOINT_NUMBER:', CHECKPOINT_NUMBER)
-        LOAD_AGENT_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + _LOAD_FROM_CHECKPOINT_TAG + str(CHECKPOINT_NUMBER))
-        assert os.path.isfile(LOAD_AGENT_PATH), LOAD_AGENT_PATH
-    else:
-        raise AssertionError
 
     # logging settings:
     UTCNOW = get_utcnow_str()
@@ -102,57 +80,15 @@ if __name__ == '__main__':
 
     # ----- ENVIRONMENT -----
 
-    # env = RadialArmMaze(corridor_width=.2,
-    #                     window_size=200, seed=4242, agent_size=.075, food_size=.05, n_food_items=1,
-    #                     # init_agent_position=(.5, .1), init_food_positions=((.9, .5),),
-    #                     init_agent_position=(.9, .5), init_food_positions=((.5, .9),),
-    #                     vision_depth=.2, vision_field_angle=135, max_steps=400, vision_resolution=8)
-
-    # todo: json, so you can change stuffs
-    with open(LOAD_ENV, "rb") as f:
-        env = pickle.load(f)
-
-    print(env.__str__init_params__())
-    print('observation_space:',
-          env.observation_space.shape,
-          np.asarray(env.observation_space.shape).prod())
+    env = load_env(LOAD_AGENT, LOAD_AGENT_DIR)
 
     # ----- AGENT -----
 
-    with open(LOAD_PHENOTYPE, "rb") as f:
-        Phenotype, _Phenotype_attrs = dill.load(f)
-        for name, value in _Phenotype_attrs.items():
-            setattr(Phenotype, name, value)
+    agent, other_loads = load_agent(LOAD_AGENT, LOAD_AGENT_DIR, LOAD_FROM, CHECKPOINT_NUMBER)
+    agent.set_env(env)
+    config = other_loads['config']
 
-    # load from pickle:
-    if LOAD_FROM == 'pickle':
-        with open(LOAD_AGENT_PATH, "rb") as f:
-            genome = pickle.load(f)
-        agent = Phenotype(CONFIG_PATH, genome=genome)
-        config = agent.config
-
-    # load from checkpoint:
-    elif LOAD_FROM == 'checkpoint':
-
-        # input(
-        #     "Loading population can be memory intensive, do you really want to open it?"
-        #     " (be sure you have a lot of free memory (e.g. close Chrome before going on))"
-        #     " [Press ENTER to continue]")
-        print('Loading population and agent...')
-
-        p = neat.Checkpointer.restore_checkpoint(LOAD_AGENT_PATH)
-        config = p.config
-        # pprint(p.population)
-        pop = sorted([genome for _id, genome in p.population.items() if genome.fitness is not None],
-                     key=lambda x: -x.fitness)
-        pprint([(genome.key, genome, genome.fitness) for genome in pop])
-        assert pop
-        best_genome = pop[1]
-        agent = Phenotype(config, genome=best_genome)
-        print()
-
-    else:
-        raise AssertionError
+    # --- stats and genome visualization ---
 
     with open(LOAD_STATS, "rb") as f:
         # input(
@@ -162,6 +98,8 @@ if __name__ == '__main__':
         print('Loading stats...')
         stats = pickle.load(f)
     print(stats)
+    assert len(stats.generation_statistics) == len(stats.most_fit_genomes)
+    assert stats.best_genome() is max(stats.most_fit_genomes, key=lambda x: x.fitness)
     assert all([(max(_genome_fitness
                      for _specie in _species.values()
                      for _genome_fitness in _specie.values()) == _best_genome.fitness)
