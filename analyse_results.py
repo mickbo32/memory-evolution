@@ -31,7 +31,55 @@ from memory_evolution.logging import set_main_logger
 from memory_evolution.load import load_env, load_agent, get_checkpoint_number, AVAILABLE_LOADING_METHODS
 
 
-def plot_avg_df(df, ax=None, avg_label="average", avg_color='b', show_maxminstd_label=True):
+def plot_bars(df: pd.DataFrame, ax, ylabel=None, title=None):
+    """Plot metrics along axis=0"""
+    x = np.arange(len(df.columns))
+    ax.bar(x, df.mean(axis=0), yerr=df.std(axis=0),
+           align='center', alpha=0.5, ecolor='black', capsize=10)
+    ax.plot(x, df.max(axis=0), 'x', color='gray')  # you can also use plt.scatter()
+    ax.plot(x, df.min(axis=0), 'x', color='gray')  # you can also use plt.scatter()
+    if ylabel is not None:
+        ax.set_ylabel(ylabel)
+    ax.set_xticks(x)
+    ax.set_xticklabels(df.columns)
+    ax.yaxis.grid(True)
+    if title is not None:
+        ax.set_title(title)
+    return x
+
+
+def plot_accuracy_results(all_results: pd.DataFrame, view=True, filename=None):
+    np.testing.assert_array_equal(all_results.columns,
+                                  ['test_agent_first_arm_accuracy', 'test_agent_target_reached_rate', 'Fitness'])
+    accuracy_labels = ['test_agent_first_arm_accuracy', 'test_agent_target_reached_rate']
+    accuracy_plot_labels = ['first arm accuracy', 'target reached rate']
+    fitness_labels = ['Fitness']
+    fitness_plot_labels = ['Best fitness']
+    accuracy_results = all_results[accuracy_labels].copy(deep=True)
+    fitness_results = all_results[fitness_labels].copy(deep=True)
+
+    accuracy_results.columns = accuracy_plot_labels
+    # print(accuracy_results)
+    fitness_results.columns = fitness_plot_labels
+    # print(fitness_results)
+
+    fig, axes = plt.subplots(1, 2, figsize=(6.4 * 1.6, 4.8))
+    x = np.arange(len(all_results.columns))
+    plot_bars(accuracy_results, axes[0], ylabel="Accuracy (%)",
+              title=f"Accuracy results (averaged across {len(all_results.index)} evolution processes)")
+    plot_bars(fitness_results, axes[1], ylabel="Fitness",
+              title=f"Best fitness (averaged across {len(all_results.index)} evolution processes)")
+
+    plt.tight_layout()
+    if filename is not None:
+        plt.savefig(filename)
+    if view:
+        plt.show()
+
+    plt.close()
+
+
+def plot_avg_df(df: pd.DataFrame, ax=None, avg_label="average", avg_color='b', show_maxminstd_label=True):
     """Plot metrics along axis=0"""
     if ax is None:
         fig, ax = plt.subplots(1)
@@ -49,7 +97,7 @@ def plot_avg_df(df, ax=None, avg_label="average", avg_color='b', show_maxminstd_
     return ax
 
 
-def plot_best_fitness(all_stats, ylog=False, view=False, filename=None, ylim=None):
+def plot_best_fitness(all_stats, ylog=False, view=True, filename=None, ylim=None):
     """ Plots the populations' best fitness over generations.
 
     If ``filename`` is None, don't save.
@@ -114,7 +162,7 @@ def plot_best_fitness(all_stats, ylog=False, view=False, filename=None, ylim=Non
     plt.close()
 
 
-def plot_genome_metrics(all_stats, ylog=False, view=False, filename=None, ylim=None):
+def plot_genome_metrics(all_stats, ylog=False, view=True, filename=None, ylim=None):
     """ Plots the populations' best fitness over generations.
 
     If ``filename`` is None, don't save.
@@ -241,9 +289,11 @@ if __name__ == '__main__':
 
     # loading results:
     LOAD_ALL_RESULTS = os.path.join(LOAD_AGENT_DIR, LOAD_DIR_TAG + '_all_results.csv')
-    LOAD_ALL_RESULTS_DESCRIBTION = os.path.join(LOAD_AGENT_DIR, LOAD_DIR_TAG + '_all_results_description.csv')
+    ALL_RESULTS_DESCRIBTION = os.path.join(LOAD_AGENT_DIR, LOAD_DIR_TAG + '_all_results_description.csv')
+    ALL_RESULTS_PLOT = os.path.join(LOAD_AGENT_DIR, LOAD_DIR_TAG + '_bar_plot_with_error_bars.png')
     if os.path.exists(LOAD_ALL_RESULTS):
-        assert os.path.exists(LOAD_ALL_RESULTS_DESCRIBTION)
+        assert os.path.exists(ALL_RESULTS_DESCRIBTION)
+        assert os.path.exists(ALL_RESULTS_PLOT)
         all_results = pd.read_csv(LOAD_ALL_RESULTS, index_col=0)
     else:
         all_results = []
@@ -259,7 +309,8 @@ if __name__ == '__main__':
             all_results_index.append(LOAD_AGENT)
         all_results = pd.DataFrame(all_results, index=all_results_index)
         all_results.to_csv(LOAD_ALL_RESULTS)
-        all_results.describe().to_csv(LOAD_ALL_RESULTS_DESCRIBTION)
+        all_results.describe().to_csv(ALL_RESULTS_DESCRIBTION)
+        plot_accuracy_results(all_results, view=True, filename=ALL_RESULTS_PLOT)
     print(all_results)
     # print(all_results.info())
     print(all_results.describe())
