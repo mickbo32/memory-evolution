@@ -67,7 +67,7 @@ echo "Optimizing and compressing current gifs ..."
 for in_file in tmp/*.gif
 do
     out_file=$(echo ${in_file} | sed -E 's/tmp\/(.*)\.gif/\1_opt.gif/')
-    gifsicle -O3 --colors 16 --lossy=200 -o "${out_file}" "${in_file}"
+    gifsicle -O3 --colors 16 --lossy=200 -o "${out_file}" "${in_file}"  # --scale 0.8
 done
 
 

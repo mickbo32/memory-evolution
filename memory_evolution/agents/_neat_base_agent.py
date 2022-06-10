@@ -97,12 +97,11 @@ class BaseNeatAgent(BaseAgent, ABC):
         self._phenotype = None
         if genome is not None:
             self.genome = genome
-        self.node_names = {0: 'rotation', 1: 'forward'}  # {-1: 'A', -2: 'B', 0: 'A XOR B'}
+        self.node_names = {0: 'rotation', 1: 'forward'}
         self._render = False
 
     def set_env(self, env: gym.Env) -> None:
         """Extends base class method with the same name."""
-        config = 0
         obs_size = reduce(mul, env.observation_space.shape, 1)
         if self.config.genome_config.num_inputs != obs_size:
             raise ValueError(

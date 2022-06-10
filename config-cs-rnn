@@ -1,0 +1,121 @@
+#--- parameters for the spatial memory and navigation experiment ---#
+
+[NEAT]
+fitness_criterion      = max
+# fitness_criterion      = mean
+fitness_threshold      = 1
+# no_fitness_termination = False
+no_fitness_termination = True
+pop_size               = 200
+reset_on_extinction    = False
+
+[DefaultGenome]
+# network parameters
+# --------------------------------------
+num_inputs              = 63
+# agent_size,vision_depth,vision_field_angle,vision_resolution,vision_channels,vision_point_radius
+## .075  .3  135 15  1   = 390
+## .075  .3  135 7   1   = 84
+## .075  .2  135 7   1   = 91
+## .075  .2  135 7   3   = 273
+## .075  .2  135 4   3   .025    = 84  # this was when vision points start was on the agent border
+# .075  .25 135 3   3   .05     = 63
+# .075  .2  135 3   3   .04     = 63
+# .075  .2  135 3   3   .035     = 63
+# .075  .2  135 4   3   .025    = 108
+# .075  .2  135 3   1   .04     = 21
+# --------------------------------------
+num_hidden              = 0
+# num_hidden              = 5
+# num_hidden              = 10
+num_outputs             = 1
+feed_forward            = False
+# initial_connection      = partial_direct 0.5
+# initial_connection      = full_nodirect
+initial_connection      = full_direct
+
+# node activation options
+activation_default      = sigmoid
+activation_mutate_rate  = 0.0
+activation_options      = sigmoid
+
+# node aggregation options
+aggregation_default     = sum
+aggregation_mutate_rate = 0.0
+aggregation_options     = sum
+
+# node bias options
+bias_init_mean          = 0.0
+bias_init_stdev         = 1.0
+bias_init_type          = normal
+bias_max_value          = 30.0
+bias_min_value          = -30.0
+# bias_mutate_power       = 0.5
+bias_mutate_power       = 0.1
+# bias_mutate_rate        = 0.7
+bias_mutate_rate        = 0.3
+bias_replace_rate       = 0.1
+
+# genome compatibility options
+compatibility_disjoint_coefficient = 1.0
+compatibility_weight_coefficient   = 0.5
+
+# connection add/remove rates
+conn_add_prob           = 0.4
+conn_delete_prob        = 0.45
+## # da testare:
+##conn_add_prob           = 0.2
+##conn_delete_prob        = 0.2
+
+# connection enable options
+enabled_default         = True
+enabled_mutate_rate     = 0.01
+enabled_rate_to_false_add = 0.0
+enabled_rate_to_true_add  = 0.0
+
+# node add/remove rates
+node_add_prob           = 0.2
+node_delete_prob        = 0.25
+
+# node response options
+response_init_mean      = 1.0
+response_init_stdev     = 0.0
+response_init_type      = normal
+response_max_value      = 30.0
+response_min_value      = -30.0
+# response_mutate_power   = 0.0
+# response_mutate_rate    = 0.0
+# response_replace_rate   = 0.0
+response_mutate_power   = 0.01
+response_mutate_rate    = 0.01
+response_replace_rate   = 0.0001
+
+# single/multiple mutation options
+single_structural_mutation = False
+structural_mutation_surer  = default
+
+# connection weight options
+weight_init_mean        = 0.0
+weight_init_stdev       = 1.0
+weight_init_type        = normal
+weight_max_value        = 30
+weight_min_value        = -30
+# weight_mutate_power     = 0.5
+weight_mutate_power     = 0.4
+# weight_mutate_rate      = 0.8
+weight_mutate_rate      = 0.5
+weight_replace_rate     = 0.1
+
+[DefaultSpeciesSet]
+compatibility_threshold = 3.0
+
+[DefaultStagnation]
+species_fitness_func = max
+max_stagnation       = 20
+species_elitism      = 2
+
+[DefaultReproduction]
+elitism            = 2
+survival_threshold = 0.2
+min_species_size   = 2
+

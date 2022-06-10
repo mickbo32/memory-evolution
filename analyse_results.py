@@ -179,7 +179,8 @@ if __name__ == '__main__':
     # ----- Settings -----
     RENDER = True  # False  # render or just save gif files
     # ---
-    LOAD_DIR_TAG = '2022-06-08T172246_training_allocentric_100'
+    # LOAD_DIR_TAG = '2022-06-08T172246_training_allocentric_100'
+    LOAD_DIR_TAG = 'small_allo_and_ego_test'
     LOAD_AGENT_DIR = f"logs/saved_logs/outputs-link/{LOAD_DIR_TAG}/logs/"
     LOAD_FROM: AVAILABLE_LOADING_METHODS = 'pickle'
     N_EPISODES = 0  # 5

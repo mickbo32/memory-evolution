@@ -24,7 +24,7 @@ import pandas as pd
 from gym.utils.env_checker import check_env  # from stable_baselines.common.env_checker import check_env
 
 import memory_evolution
-from memory_evolution.agents import RandomActionAgent, RnnNeatAgent, CtrnnNeatAgent
+from memory_evolution.agents import RandomActionAgent, RnnNeatAgent, CtrnnNeatAgent, ConstantSpeedRnnNeatAgent
 from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze, RadialArmMaze
 from memory_evolution.evaluate import evaluate_agent
 from memory_evolution.logging import set_main_logger
@@ -37,6 +37,8 @@ if isRunningInPyCharm:
 
 
 if __name__ == '__main__':
+
+    EPOCHS = 300
 
     # parse command-line arguments passed to the program:
     JOB_ID = ''  # type: str
@@ -206,12 +208,12 @@ if __name__ == '__main__':
     # here so that the script will run successfully regardless of the
     # current working directory.
     local_dir = os.path.dirname(__file__)
-    config_path = os.path.join(local_dir, 'config-rnn')
+    config_path = os.path.join(local_dir, 'config-cs-rnn')
     # logging: save current config file for later use:
     shutil.copyfile(config_path, os.path.join(logging_dir, LOG_TAG + '_config'))
 
     # select Phenotype:
-    Phenotype = RnnNeatAgent
+    Phenotype = ConstantSpeedRnnNeatAgent
 
     # set Phenotype attributes (overwrite default values, e.g. fitness and evaluate_agent params):
     # Phenotype.fitness_func = memory_evolution.evaluate.FitnessRewardAndSteps(5., 5., normalize_weights=False)
@@ -311,7 +313,7 @@ if __name__ == '__main__':
 
     agent.set_env(env)
     logging.info("Evolving...")
-    winner, stats = agent.evolve(500, render=render,
+    winner, stats = agent.evolve(EPOCHS, render=render,
                                  # checkpointer=checkpointer,
                                  parallel=parallel,
                                  filename_tag=LOG_TAG + '_', path_dir=logging_dir, image_format='png',

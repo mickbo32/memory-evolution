@@ -38,6 +38,8 @@ if isRunningInPyCharm:
 
 if __name__ == '__main__':
 
+    EPOCHS = 500
+
     # parse command-line arguments passed to the program:
     JOB_ID = ''  # type: str
     if len(sys.argv) == 1:  # local execution
@@ -374,7 +376,7 @@ if __name__ == '__main__':
 
     agent.set_env(env)
     logging.info("Evolving...")
-    winner, stats = agent.evolve(500, render=render, checkpointer=checkpointer, parallel=parallel,
+    winner, stats = agent.evolve(EPOCHS, render=render, checkpointer=checkpointer, parallel=parallel,
                                  filename_tag=LOG_TAG + '_', path_dir=logging_dir, image_format='png',
                                  view_best=False,
                                  stats_ylog=False)
