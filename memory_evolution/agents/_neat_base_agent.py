@@ -33,7 +33,7 @@ import memory_evolution
 from memory_evolution import visualize
 from memory_evolution.agents import BaseAgent
 from memory_evolution.agents.exceptions import EnvironmentNotSetError
-from memory_evolution.evaluate import evaluate_agent, FitnessRewardAndSteps
+from memory_evolution.evaluate import evaluate_agent, fitness_func_total_reward, fitness_func_time_minimize
 from memory_evolution.utils import get_color_str, normalize_observation
 from memory_evolution.utils import MustOverride, override
 from .exceptions import NotEvolvedError
@@ -59,6 +59,14 @@ def _top_level_wrapper(low_level_func):
 
 
 class BaseNeatAgent(BaseAgent, ABC):
+
+    # fitness_func is class attribute, because all agents of the same
+    # type (or in same population) should be evaluated in the same way
+    # (so that the fitnesses of two agents can be compared).
+    fitness_func: inspect.signature(evaluate_agent).parameters['fitness_func'].annotation = fitness_func_total_reward
+    eval_num_episodes: inspect.signature(evaluate_agent).parameters['episodes'].annotation = 5
+    eval_episodes_aggr_func: inspect.signature(evaluate_agent).parameters['episodes_aggr_func'].annotation = 'mean'
+    # You can access the dict of annotations with: print(type(self).__annotations__)
 
     @classmethod
     @property
@@ -89,12 +97,11 @@ class BaseNeatAgent(BaseAgent, ABC):
         self._phenotype = None
         if genome is not None:
             self.genome = genome
-        self.node_names = {0: 'rotation', 1: 'forward'}  # {-1: 'A', -2: 'B', 0: 'A XOR B'}
+        self.node_names = {0: 'rotation', 1: 'forward'}
         self._render = False
 
     def set_env(self, env: gym.Env) -> None:
         """Extends base class method with the same name."""
-        config = 0
         obs_size = reduce(mul, env.observation_space.shape, 1)
         if self.config.genome_config.num_inputs != obs_size:
             raise ValueError(
@@ -172,14 +179,6 @@ class BaseNeatAgent(BaseAgent, ABC):
             )
         assert self._phenotype is not None, (self._genome, self._phenotype)
         return NotImplemented
-
-    # fitness_func is class attribute, because all agents of the same
-    # type (or in same population) should be evaluated in the same way
-    # (so that the fitnesses of two agents can be compared).
-    fitness_func: inspect.signature(evaluate_agent).parameters['fitness_func'].annotation = FitnessRewardAndSteps(4., 6., normalize_weights=False)
-    eval_num_episodes: inspect.signature(evaluate_agent).parameters['episodes'].annotation = 5
-    eval_episodes_aggr_func: inspect.signature(evaluate_agent).parameters['episodes_aggr_func'].annotation = 'median'
-    # You can access the dict of annotations with: print(type(self).__annotations__)
 
     # def get_eval_genome_func()
     # @classmethod
@@ -334,11 +333,13 @@ class BaseNeatAgent(BaseAgent, ABC):
             output_nodes = self.config.genome_config.output_keys
             _output_nodes_set = set(output_nodes)
             hidden_nodes = [n.key for n in self.genome.nodes.values() if n.key not in _output_nodes_set]
+            # build graph
             graph = {k: [] for k in (*input_nodes, *hidden_nodes, *output_nodes)}
             for cg in self.genome.connections.values():
                 in_node, out_node = cg.key
                 graph[in_node].append(out_node)
-            def bfs(graph, nodes):
+            # bfs function; move outside, so it is more efficient instead of building at each call the function again.
+            def _old_bad_bfs(graph, nodes):  # bad and inefficient and not a real bfs if considering starting nodes
                 assert list(graph.keys())[:len(input_nodes)] == input_nodes
                 node_rank = {}
                 q = deque()
@@ -354,18 +355,37 @@ class BaseNeatAgent(BaseAgent, ABC):
                                 node_rank[v] = level + 1
                                 q.append(v)
                 return node_rank
+            def bfs(graph, starting_nodes):
+                assert list(graph.keys())[:len(input_nodes)] == input_nodes
+                node_rank = {node: 0 for node in starting_nodes}
+                q = deque(starting_nodes)
+                while q:
+                    u = q.popleft()
+                    level = node_rank[u]
+                    for v in graph[u]:
+                        if v not in node_rank:
+                            node_rank[v] = level + 1
+                            q.append(v)
+                return node_rank
+            # starting nodes for bfs are the ones which have no incoming connections,
+            # or the only incoming connections are recurrent on themselves.
             starting_nodes = set(graph.keys())
             for cg in self.genome.connections.values():
                 in_node, out_node = cg.key
-                if out_node in starting_nodes:
+                if out_node in starting_nodes and in_node != out_node:
                     starting_nodes.remove(out_node)
+            # compute nodes ranks with bfs
             node_rank = bfs(graph, starting_nodes)
+            assert node_rank == _old_bad_bfs(graph, starting_nodes), (node_rank, _old_bad_bfs(graph, starting_nodes))
             max_rank = max(node_rank.values())
             assert min(node_rank.values()) == 0
             rank_hidden = defaultdict(list)
-            for h in hidden_nodes:
-                rank_hidden[node_rank[h]].append(h)
-            max_hidden_rank = max(rank_hidden)
+            if hidden_nodes:
+                for h in hidden_nodes:
+                    rank_hidden[node_rank[h]].append(h)
+                max_hidden_rank = max(rank_hidden)
+            else:
+                max_hidden_rank = 0
             # # outputs are placed all in the max rank (they are also in the correct order):
             # for o in output_nodes:
             #     rank_hidden[max_rank].append(o)
@@ -474,7 +494,7 @@ class BaseNeatAgent(BaseAgent, ABC):
             dot.edge('rank_o', name, _attributes={'style': _rank_style, 'lhead': 'cluster_outputs'})
 
         dot.render(filename, view=view)
-        print(dot.source)
+        # print(dot.source)
 
     def evolve(self,
                n=None,
@@ -485,6 +505,7 @@ class BaseNeatAgent(BaseAgent, ABC):
                path_dir: str = '',
                image_format: str = 'svg',
                view_best: bool = False,  # render the best agent and show stats and genome by opening plots
+               stats_ylog: bool = True,
                ) -> tuple[neat.genome.DefaultGenome, neat.statistics.StatisticsReporter]:
         """Evolve a population of agents of the type of self and then return
         the best genome. The best genome is also saved in self. It returns also
@@ -559,12 +580,12 @@ class BaseNeatAgent(BaseAgent, ABC):
             pickle.dump(stats, f)
 
         # Display stats on the evolution performed.
-        self.visualize_evolution(stats, stats_ylog=True, view=view_best,
+        self.visualize_evolution(stats, stats_ylog=stats_ylog, view=view_best,
                                  filename_stats=make_filename("fitness." + image_format),
                                  filename_speciation=make_filename("speciation." + image_format))
 
         # Display the winning genome.
-        print('\nBest genome:\n{!s}'.format(winner))
+        # print('\nBest genome:\n{!s}'.format(winner))  # it is printed already by self.visualize_genome()
         self.visualize_genome(winner, view=view_best, name='Best Genome', filename=make_filename("winner-genome.gv"),
                               default_input_node_color='palette',
                               format=image_format)

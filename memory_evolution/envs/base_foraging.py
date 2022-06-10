@@ -750,6 +750,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 init_agent_position = Pos(*init_agent_position)
             if len(init_agent_position) != 2:
                 raise ValueError("'init_agent_position' should be 2D (and without channels)")
+            if not all(isinstance(x, Real) for x in init_agent_position):
+                raise ValueError("'init_agent_position' should contain Real coordinates")
         self._init_agent_position = init_agent_position
         if init_food_positions is not None:
             if len(init_food_positions) != self._n_food_items:
@@ -764,6 +766,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
             for pos in init_food_positions:
                 if len(pos) != 2:
                     raise ValueError("position in 'init_food_positions' should be 2D (and without channels)")
+                if not all(isinstance(x, Real) for x in pos):
+                    raise ValueError("position in 'init_food_positions' should contain Real coordinates")
         self._init_food_positions = init_food_positions
         if init_landmarks_positions is not None:
             landmark_err_msg_fmt = (
@@ -793,6 +797,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
             for pos in init_landmarks_positions:
                 if len(pos) != 2:
                     raise ValueError("position in 'init_landmarks_positions' should be 2D (and without channels)")
+                if not all(isinstance(x, Real) for x in pos):
+                    raise ValueError("position in 'init_landmarks_positions' should contain Real coordinates")
         self._init_landmarks_positions = init_landmarks_positions
         # checks on init_agent_position and init_food_positions (and others) positions validation in self.reset()
 
@@ -849,7 +855,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         return self._n_food_items
 
     @property
-    def current_food_items_available(self):
+    def food_items_currently_available(self):
         return self._n_food_items - self._food_items_collected
 
     @property
@@ -932,6 +938,13 @@ class BaseForagingEnv(gym.Env, MustOverride):
     def agent(self):
         return self._agent
 
+    @property
+    def food_items(self):
+        """return the list of available food items"""
+        food_items = self._food_items_group.sprites()
+        assert len(food_items) == self.food_items_currently_available
+        return food_items
+
     @staticmethod
     def __get_vision_point_transparency(point_win_radius, vision_win_step):
         transparency = .8  # base
@@ -1007,6 +1020,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._food_items_collected = 0
         if not self.__has_been_ever_reset:
             self.__has_been_ever_reset = True
+            logging.log(logging.DEBUG + 8, f"BaseForagingEnv.reset({self!r}, ...): first reset ever.")
 
             msg = (
                 "Custom subclass should create a 'self._background_img'"
@@ -1064,7 +1078,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._rendering_observation_pos = None
         self._rendering_observation_size = None
 
-        assert self.current_food_items_available == len(self._food_items_group)
+        assert self.food_items_currently_available == len(self._food_items_group)
         self.__is_first_reset_ever = False
         self.debug_info['reset']['running'] = False
         if not return_info:
@@ -1551,7 +1565,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         self._food_items = [food for i, food in enumerate(self._food_items) if i not in remove_food]  # O(len(self._food_items)) if isinstance(remove_food, set) else O(len(remove_food) * len(self._food_items))
         assert len(self._food_items) == len(self._food_items_group) == self._n_food_items - self._food_items_collected
         assert food_collected >= 0, food_collected
-        assert self.current_food_items_available == len(self._food_items_group)
+        assert self.food_items_currently_available == len(self._food_items_group)
 
         # update _env_img: -> pos: & rotate:
         # since, food items are not moving, env is updated only in _init_state() and when collecting food

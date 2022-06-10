@@ -6,7 +6,7 @@ set -x  # and call as bash clean.sh; or without set -x and call as bash -x clean
 
 rm -Ir frames_*
 rm -I *.gif
-rm -I log*.log
+rm -I *.log  # rm -I log*.log
 # ATT: se prima ho messo yes, nel secondo caso non mi chiede nulla (if they are few)!! bugg
 
 rm -I *neat-checkpoint-*
@@ -15,6 +15,6 @@ rm -I *neat-checkpoint-*
 rm -I *.gv
 rm -I *.svg
 rm -I *.png
-rm -I *.pickle
+rm -I *.pickle *.pkl
 rm -I *_config
 

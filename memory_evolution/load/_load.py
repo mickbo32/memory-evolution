@@ -25,7 +25,112 @@ from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze, Radia
 from memory_evolution.evaluate import evaluate_agent
 from memory_evolution.logging import set_main_logger
 
-from memory_evolution.load import load_env, load_agent, get_checkpoint_number, AVAILABLE_LOADING_METHODS
+# other consts:
+AVAILABLE_LOADING_METHODS = Literal['pickle', 'checkpoint']
+_LOAD_FROM_CHECKPOINT_TAG = '_neat-checkpoint-'
+
+
+def load_env(LOAD_AGENT, LOAD_AGENT_DIR):
+    LOAD_ENV = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_env.pickle')
+
+    # todo: json, so you can change stuffs
+    with open(LOAD_ENV, "rb") as f:
+        env = pickle.load(f)
+
+    print(env.__str__init_params__())
+    logging.debug(env._seed)
+    print('observation_space:',
+          env.observation_space.shape,
+          np.asarray(env.observation_space.shape).prod())
+
+    return env
+
+
+def get_checkpoint_number(LOAD_AGENT, LOAD_AGENT_DIR,
+                          LOAD_FROM: AVAILABLE_LOADING_METHODS, CHECKPOINT_NUMBER: Optional[int]=None):
+    assert LOAD_FROM == 'checkpoint', LOAD_FROM
+    if CHECKPOINT_NUMBER is None:
+        prefix = LOAD_AGENT + _LOAD_FROM_CHECKPOINT_TAG
+        checkpoint_numbers = sorted([int(f.removeprefix(prefix))
+                                     for f in os.listdir(LOAD_AGENT_DIR)
+                                     if f.startswith(prefix)])
+        print(f"Checkpoints found (generation_number) for agent {LOAD_AGENT}:", checkpoint_numbers)
+        CHECKPOINT_NUMBER = checkpoint_numbers[-1]  # max(checkpoint_numbers)
+        print('CHECKPOINT_NUMBER:', CHECKPOINT_NUMBER)
+    return CHECKPOINT_NUMBER
+
+
+def load_agent(LOAD_AGENT, LOAD_AGENT_DIR, LOAD_FROM: AVAILABLE_LOADING_METHODS, CHECKPOINT_NUMBER: Optional[int]=None):
+    """
+    LOAD_FROM='checkpoint' and if CHECKPOINT_NUMBER is None, load the last checkpoint,
+    otherwise, load form that checkpoint number (which must exist).
+    """
+    assert LOAD_FROM in typing.get_args(AVAILABLE_LOADING_METHODS), LOAD_FROM
+
+    LOAD_PHENOTYPE = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_phenotype.pkl')
+    if LOAD_FROM == 'pickle':
+        CONFIG_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_config')
+        LOAD_AGENT_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + '_genome.pickle')
+        assert os.path.isfile(CONFIG_PATH), CONFIG_PATH
+        assert os.path.isfile(LOAD_AGENT_PATH), LOAD_AGENT_PATH
+    elif LOAD_FROM == 'checkpoint':
+        CHECKPOINT_NUMBER = get_checkpoint_number(LOAD_AGENT, LOAD_AGENT_DIR, LOAD_FROM, CHECKPOINT_NUMBER)
+        LOAD_AGENT_PATH = os.path.join(LOAD_AGENT_DIR, LOAD_AGENT + _LOAD_FROM_CHECKPOINT_TAG + str(CHECKPOINT_NUMBER))
+        assert os.path.isfile(LOAD_AGENT_PATH), LOAD_AGENT_PATH
+    else:
+        raise AssertionError
+
+    other_loads = {}
+    other_loads['CONFIG_PATH'] = CONFIG_PATH
+
+    # Phenotype:
+    with open(LOAD_PHENOTYPE, "rb") as f:
+        Phenotype, _Phenotype_attrs = dill.load(f)
+        for name, value in _Phenotype_attrs.items():
+            setattr(Phenotype, name, value)
+
+    other_loads['Phenotype'] = Phenotype
+
+    # load from pickle:
+    if LOAD_FROM == 'pickle':
+        with open(LOAD_AGENT_PATH, "rb") as f:
+            genome = pickle.load(f)
+        agent = Phenotype(CONFIG_PATH, genome=genome)
+        config = agent.config
+
+        other_loads['genome'] = genome
+
+    # load from checkpoint:
+    elif LOAD_FROM == 'checkpoint':
+
+        # # input(
+        # #     "Loading population can be memory intensive, do you really want to open it?"
+        # #     " (be sure you have a lot of free memory (e.g. close Chrome before going on))"
+        # #     " [Press ENTER to continue]")
+        # print('Loading population and agent...')
+
+        p = neat.Checkpointer.restore_checkpoint(LOAD_AGENT_PATH)
+        config = p.config
+        # pprint(p.population)
+        pop = sorted([genome for _id, genome in p.population.items() if genome.fitness is not None],
+                     key=lambda x: -x.fitness)
+        pprint([(genome.key, genome, genome.fitness) for genome in pop])
+        assert pop
+        best_genome = pop[1]
+        agent = Phenotype(config, genome=best_genome)
+        print()
+
+        other_loads['CHECKPOINT_NUMBER'] = CHECKPOINT_NUMBER
+        other_loads['best_genome'] = best_genome
+        other_loads['p'] = p
+        other_loads['pop'] = pop
+
+    else:
+        raise AssertionError
+
+    other_loads['config'] = config
+
+    return agent, other_loads
 
 
 if __name__ == '__main__':

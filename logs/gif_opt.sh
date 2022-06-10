@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 
 
-# gif_dst=gifs
 gif_dst='gifs'
+# following destinations refer from "${gif_dst}":
+videos_dst='videos'
+opt_gifs_dst='optimized'  # 'optimized_gifs'
 
 
 if [[ $(find . -maxdepth 1 -name '*.gif') == '' ]]; then
@@ -18,10 +20,16 @@ fi
 # create "${gif_dst}/..." and move all gifs there
 mkdir -p "${gif_dst}/originals"
 mkdir "${gif_dst}/tmp"
+[[ $? != 0 ]] && exit 1
 [[ -d "${gif_dst}/tmp" ]] || echo 'ERROR'
 [[ -d "${gif_dst}/tmp" ]] || exit 1
-mv -i frames_*/*.gif "${gif_dst}/tmp"
-mv -i *.gif "${gif_dst}/tmp"
+#mv -i frames_*/*.gif "${gif_dst}/tmp"
+#mv -i *.gif "${gif_dst}/tmp"
+#ls frames_*/!(*_opt).gif  # it works in the terminal, but not in the script.
+#ls !(*_opt).gif  # it works in the terminal, but not in the script.
+# find . -maxdepth 1 -name '*.gif' ! -name '*_opt.gif'  # it works.
+# find . frames_*/ -maxdepth 1 -name '*.gif' ! -name '*_opt.gif' -exec echo {} \;  # it works.
+find . frames_*/ -maxdepth 1 -name '*.gif' ! -name '*_opt.gif' -exec mv -i "{}" "${gif_dst}/tmp" \;
 
 
 # change working directory to "${gif_dst}"
@@ -59,13 +67,47 @@ echo "Optimizing and compressing current gifs ..."
 for in_file in tmp/*.gif
 do
     out_file=$(echo ${in_file} | sed -E 's/tmp\/(.*)\.gif/\1_opt.gif/')
-    gifsicle -O3 --colors 16 --lossy=200 -o "${out_file}" "${in_file}"
+    gifsicle -O3 --colors 16 --lossy=200 -o "${out_file}" "${in_file}"  # --scale 0.8
 done
 
 
 # move gifs in tmp in originals and delete tmp:
 mv -i tmp/* originals
 rmdir tmp
+
+
+# move *.mp4 in "${videos_dst}":
+# move *_opt.gif in "${opt_gifs_dst}":
+answer='NONE'
+while [[ $answer != 'y' && $answer != 'n' && $answer != '' ]]; do
+    read -r -p "Do you want to move newly created videos and optimized gifs in two new separate folders? ({y}|n)" answer
+done
+if [[ $answer == 'y' || $answer == '' ]]; then
+    # create folders:
+    #if [[ -e "${videos_dst}" ]]; then
+    #    echo "\"${videos_dst}\" already exists"
+    #    echo "Aborting."
+    #    exit 1
+    #fi
+    #if [[ -e "${opt_gifs_dst}" ]]; then
+    #    echo "\"${opt_gifs_dst}\" already exists"
+    #    echo "Aborting."
+    #    exit 1
+    #fi
+    if [[ -d "${videos_dst}" ]]; then
+        echo "Warning: \"${videos_dst}\" already exists, proceeding anyway (adding files to the existing folder)..."
+    fi
+    if [[ -d "${opt_gifs_dst}" ]]; then
+        echo "Warning: \"${opt_gifs_dst}\" already exists, proceeding anyway (adding files to the existing folder)..."
+    fi
+    mkdir -p "${videos_dst}"
+    mkdir -p "${opt_gifs_dst}"
+    # move files:
+    mv -i *.mp4 "${videos_dst}"
+    mv -i *_opt.gif "${opt_gifs_dst}"
+    echo "Assert (you should check manually this): \"${videos_dst}\" and \"${opt_gifs_dst}\" should have the same number of elements (the number of gifs converted)"
+fi
+
 
 
 # get .gif duration and info:

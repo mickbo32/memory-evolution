@@ -6,7 +6,7 @@ fitness_criterion      = max
 fitness_threshold      = 1
 # no_fitness_termination = False
 no_fitness_termination = True
-pop_size               = 250
+pop_size               = 200
 reset_on_extinction    = False
 
 [DefaultGenome]
@@ -28,7 +28,7 @@ num_inputs              = 63
 num_hidden              = 0
 # num_hidden              = 5
 # num_hidden              = 10
-num_outputs             = 2
+num_outputs             = 1
 feed_forward            = False
 # initial_connection      = partial_direct 0.5
 # initial_connection      = full_nodirect
@@ -61,8 +61,8 @@ compatibility_disjoint_coefficient = 1.0
 compatibility_weight_coefficient   = 0.5
 
 # connection add/remove rates
-conn_add_prob           = 0.5
-conn_delete_prob        = 0.5
+conn_add_prob           = 0.4
+conn_delete_prob        = 0.45
 ## # da testare:
 ##conn_add_prob           = 0.2
 ##conn_delete_prob        = 0.2
@@ -75,7 +75,7 @@ enabled_rate_to_true_add  = 0.0
 
 # node add/remove rates
 node_add_prob           = 0.2
-node_delete_prob        = 0.2
+node_delete_prob        = 0.25
 
 # node response options
 response_init_mean      = 1.0

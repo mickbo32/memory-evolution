@@ -1,3 +1,4 @@
+from collections.abc import Callable
 import logging
 import re
 import os
@@ -12,12 +13,13 @@ import pandas as pd
 def get_utcnow_str():
     return pd.Timestamp.utcnow().strftime('%Y-%m-%d_%H%M%S.%f%z')
 
+
 # logging settings:
 def set_main_logger(
                 logger_name: Optional[str] = None,
                 logging_dir: str = 'logs',
                 file_handler_now: Optional[int] = logging.DEBUG,
-                file_handler_now_filename_fmt: str = "log_{utcnow}.log",
+                file_handler_now_filename_fmt: str = "{utcnow}.log",  # "log_{utcnow}.log",
                 file_handler_all: Optional[int] = logging.DEBUG,
                 file_handler_all_filename: str = "log_all.log",
                 stderr_handler: Optional[int] = logging.WARNING,
@@ -100,4 +102,59 @@ def set_main_logger(
     rootLogger.setLevel(logging.NOTSET)  # logging.WARNING default for root, logging.NOTSET default for others.
 
     return logging_dir, utcnow
+
+
+class TrackingVal(Callable):
+    """log only each n steps (min, max, avg, std).
+
+    ``msg_fmt`` should contain "{min} {max} {avg} {sum} {n}"
+
+    Examples:
+
+        >>> logging.basicConfig(level=logging.NOTSET)
+        >>> tracking_val_logger = TrackingVal(logging.getLogger(), logging.INFO, 100)
+        >>> for i in range(1000): tracking_val_logger(i)
+
+    """
+
+    def __init__(self, logger, level, accumulate_n: int,
+                 msg_fmt: str = "n={n}:    avg={avg:<5} min={min:<5} max={max:<5}"):
+        if accumulate_n <= 0:
+            raise ValueError(accumulate_n)
+        self.logger = logger
+        self.level = level
+        self.msg_fmt = msg_fmt
+        self.i = 0
+        self.n = accumulate_n
+        self.min = None
+        self.max = None
+        self.sum = None
+        self.avg = None
+        # self.std = None  todo
+        self.reset()
+
+    def reset(self):
+        self.min = float('inf')
+        self.max = -float('inf')
+        self.sum = 0
+        self.avg = None
+        # self.std = 0  todo
+
+    def __call__(self, val):    # def __call__(self, *args, **kwargs): todo
+        i = self.i % self.n
+        if i <= 0:
+            assert i == 0, (i, self.i, self.n)
+            self.reset()
+            # # reset i (avoid overflow and memory consumption)
+            # # (anyway, since python int is not bounded and i will never get huge, you can comment this)
+            # self.i = 0
+        self.min = min(self.min, val)
+        self.max = max(self.max, val)
+        self.sum += val
+        self.avg = self.sum / (i + 1)
+        if i >= self.n - 1:
+            assert i == self.n - 1, (i, self.i, self.n)
+            self.logger.log(self.level, self.msg_fmt.format(
+                n=self.n, min=self.min, max=self.max, avg=self.avg, sum=self.sum))
+        self.i += 1
 

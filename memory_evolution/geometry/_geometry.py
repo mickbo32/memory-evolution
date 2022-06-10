@@ -514,7 +514,7 @@ def get_random_non_overlapping_positions_with_triangulation(
     # # plotting during debug:
     # fig, ax = plt.subplots()
     # gpd.GeoSeries(init_platform.boundary).plot(ax=ax, color='k')
-    # gpd.GeoSeries(platform.buffer(0)).plot(ax=ax, color='b')  # the reduced platform
+    # gpd.GeoSeries(platform.buffer(0)).plot(ax=ax, color='b')  # the reduced platform  # platform.buffer(0) to show also holes if any, use always this when plotting Polygons.
     # gpd.GeoSeries([tr.boundary for tr in triangles]).plot(ax=ax, color='gray')
     # gpd.GeoSeries([Point(p) for p in poses]).plot(ax=ax, color='r')
     # plt.show()

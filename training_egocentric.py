@@ -24,7 +24,7 @@ import pandas as pd
 from gym.utils.env_checker import check_env  # from stable_baselines.common.env_checker import check_env
 
 import memory_evolution
-from memory_evolution.agents import RandomActionAgent, RnnNeatAgent, CtrnnNeatAgent
+from memory_evolution.agents import RandomActionAgent, RnnNeatAgent, CtrnnNeatAgent, ConstantSpeedRnnNeatAgent
 from memory_evolution.envs import BaseForagingEnv, MazeForagingEnv, TMaze, RadialArmMaze
 from memory_evolution.evaluate import evaluate_agent
 from memory_evolution.logging import set_main_logger
@@ -38,7 +38,7 @@ if isRunningInPyCharm:
 
 if __name__ == '__main__':
 
-    EPOCHS = 500
+    EPOCHS = 300
 
     # parse command-line arguments passed to the program:
     JOB_ID = ''  # type: str
@@ -115,55 +115,6 @@ if __name__ == '__main__':
 
     # ----- ENVIRONMENT -----
 
-    # env = gym.make('CartPole-v0')
-    # env = BaseForagingEnv(640, (1.5, 1.), fps=None, seed=42)
-    # env = BaseForagingEnv(640, (1.5, 1.), agent_size=.5, food_size=.3, fps=None, seed=42)
-    # env = TMaze(env_size=(1.5, 1.), fps=None, seed=42, n_food_items=0)
-    # env = TMaze(env_size=(1.5, 1.), fps=None, seed=42, n_food_items=20)
-    # env = TMaze(env_size=(1.5, 1.), fps=None, seed=42, n_food_items=50)
-    # env = TMaze(.1001, env_size=(1.5, 1.), fps=None, seed=42)
-    # env = TMaze(seed=42)
-    # env = TMaze(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)  # todo: use in tests
-    # env = BaseForagingEnv(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7) # todo: use in tests
-    # env = TMaze(seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7, observation_noise=('normal', 0.0, 0.5))
-    # env = TMaze(env_size=(1.5, 1.), seed=42, agent_size=.15, n_food_items=10, max_steps=500, vision_resolution=7)
-
-    # env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.15, food_size=.05,
-    #                       n_food_items=2, max_steps=1000,
-    #                       vision_depth=.25, vision_field_angle=135, vision_resolution=7)
-    # env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.075, food_size=.05,
-    #                       n_food_items=2, max_steps=1000,
-    #                       # vision_depth=.25, vision_field_angle=135, vision_resolution=7)
-    #                       vision_depth=.5, vision_field_angle=210, vision_resolution=20)
-    # env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.075, food_size=.05,
-    #                       n_food_items=2, max_steps=500,
-    #                       vision_depth=.3, vision_field_angle=135, vision_resolution=8)
-    # env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.075, food_size=.05,
-    #                       n_food_items=10, max_steps=500,
-    #                       rotation_step=5.,
-    #                       vision_depth=.3, vision_field_angle=135, vision_resolution=16,
-    #                       # food_color=COLORS['black'], outside_color=COLORS['gray'], background_color=COLORS['white'],
-    #                       food_color=COLORS['white'], outside_color=COLORS['gray'], background_color=COLORS['black'],
-    #                       )
-    # env = BaseForagingEnv(window_size=200, env_size=(1.5, 1.), agent_size=.075, food_size=.0375,
-    #                       n_food_items=10, max_steps=500,
-    #                       rotation_step=10., forward_step=.01,
-    #                       # vision_depth=.3, vision_field_angle=135, vision_resolution=15,
-    #                       vision_depth=.3, vision_field_angle=135, vision_resolution=7,
-    #                       # food_color=COLORS['black'], outside_color=COLORS['black'], background_color=COLORS['white'],
-    #                       # food_color=COLORS['black'], outside_color=COLORS['gray'], background_color=COLORS['white'],
-    #                       # food_color=COLORS['white'], outside_color=COLORS['gray'], background_color=COLORS['black'],
-    #                       )
-
-    # env = RadialArmMaze(3, 1., window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
-    # env = RadialArmMaze(9, window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
-    # env = RadialArmMaze(5, 1., window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
-    # env = RadialArmMaze(2, window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
-    # env = RadialArmMaze(4, window_size=200, env_size=2., seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
-    # env = RadialArmMaze(window_size=200, seed=42, agent_size=.15, n_food_items=10, vision_depth=.25, vision_field_angle=135, max_steps=400, vision_resolution=7)
-
-    # env = TMaze(seed=42, agent_size=.10, n_food_items=10, max_steps=500, vision_resolution=7)
-
     # env = RadialArmMaze(corridor_width=.2,
     #                     window_size=200, seed=42, agent_size=.075, food_size=.05, n_food_items=1, max_steps=400,
     #                     init_agent_position=(.5, .1), init_food_positions=((.9, .5),),
@@ -189,8 +140,8 @@ if __name__ == '__main__':
                         background_color=np.asarray((0, 0, 0), dtype=np.uint8),
                         outside_color=np.asarray((255, 0, 0), dtype=np.uint8),
                         food_color=np.asarray((0, 200, 55), dtype=np.uint8), food_visible=False,
-                        random_init_agent_position=((.5, .1), (.5, .9), (.1, .5),),
-                        init_food_positions=((target_pos := (.9, .5)),),
+                        random_init_agent_position=((.5, .1), (.5, .9), (.1, .5), (.9, .5),),
+                        pairing_init_food_positions=(((.9, .5),), ((.1, .5),), ((.5, .1), ), ((.5, .9),),),
                         landmark_size=landmark_size,
                         init_landmarks_positions=((.5 - lm_dist / 2, lm_bord), (.5 + lm_dist / 2, lm_bord),
                                                   (.5 - lm_dist / 2, 1. - lm_bord), (.5 + lm_dist / 2, 1. - lm_bord),),
@@ -257,12 +208,12 @@ if __name__ == '__main__':
     # here so that the script will run successfully regardless of the
     # current working directory.
     local_dir = os.path.dirname(__file__)
-    config_path = os.path.join(local_dir, 'config-rnn')
+    config_path = os.path.join(local_dir, 'config-cs-rnn')
     # logging: save current config file for later use:
     shutil.copyfile(config_path, os.path.join(logging_dir, LOG_TAG + '_config'))
 
     # select Phenotype:
-    Phenotype = RnnNeatAgent
+    Phenotype = ConstantSpeedRnnNeatAgent
 
     # set Phenotype attributes (overwrite default values, e.g. fitness and evaluate_agent params):
     # Phenotype.fitness_func = memory_evolution.evaluate.FitnessRewardAndSteps(5., 5., normalize_weights=False)
@@ -285,30 +236,18 @@ if __name__ == '__main__':
     # Phenotype.eval_episodes_aggr_func = 'median'
     # Phenotype.eval_episodes_aggr_func = 'mean'
     # #
-    USER_DEFINED_FITNESS_FUNC = False
     ff_time = memory_evolution.evaluate.fitness_func_time_minimize
-    ff_dist = memory_evolution.evaluate.FitnessDistanceMinimize(target_pos)
     min_ff_time = ff_time(reward=None, steps=max_steps, done=None, env=None, agent=None)
-    min_ff_dist = -memory_evolution.geometry.euclidean_distance((0., 0.), env.env_size)
-    if USER_DEFINED_FITNESS_FUNC:
-        def fitness_func(*, reward, steps, done, env, agent, **kwargs) -> float:
-            ft = ff_time(reward=reward, steps=steps, done=done, env=env, agent=agent, **kwargs)
-            assert min_ff_time <= ft <= ff_time.max
-            fitness = ft
-            if ft <= min_ff_time:
-                fd = ff_dist(reward=reward, steps=steps, done=done, env=env, agent=agent, **kwargs)
-                assert min_ff_dist <= fd <= ff_dist.max
-                fitness -= ff_dist.max - fd
-            # print(fitness, fd if 'fd' in locals() else None)
-            return fitness
-        fitness_func.min = min_ff_time - (ff_dist.max - min_ff_dist)
-        fitness_func.max = ff_time.max
-        assert fitness_func.min < min_ff_time, (fitness_func.min, min_ff_time, ff_dist.max, min_ff_dist)
-        print(f"Fitness bounds: min={fitness_func.min} max={fitness_func.max}")
-        Phenotype.fitness_func = fitness_func
-    else:
-        fitness_func = ff_time
-        Phenotype.fitness_func = fitness_func
+    # user defined fitness_func (outside any module, just in main) so it can be pickled with dill.
+    def fitness_func(*, reward, steps, done, env, agent, **kwargs) -> float:
+        ft = ff_time(reward=reward, steps=steps, done=done, env=env, agent=agent, **kwargs)
+        assert min_ff_time <= ft <= ff_time.max
+        fitness = ft
+        return fitness
+    fitness_func.min = min_ff_time
+    fitness_func.max = ff_time.max
+    print(f"Fitness bounds: min={fitness_func.min} max={fitness_func.max}")
+    Phenotype.fitness_func = fitness_func
     #
     Phenotype.eval_num_episodes = 20
     Phenotype.eval_episodes_aggr_func = 'mean'
@@ -338,13 +277,11 @@ if __name__ == '__main__':
         for name, value in _Phenotype_attrs.items():
             setattr(Phenotype_, name, value)
     assert Phenotype is Phenotype_  # both pickle (classes) and dill (module classes)
-    if USER_DEFINED_FITNESS_FUNC:
-        # assert Phenotype.fitness_func is Phenotype_.fitness_func is fitness_func  # pickle
-        assert Phenotype.fitness_func is Phenotype_.fitness_func is not fitness_func  # dill
+    # assert Phenotype.fitness_func is Phenotype_.fitness_func is fitness_func  # pickle
+    assert Phenotype.fitness_func is Phenotype_.fitness_func is not fitness_func  # dill
     assert memory_evolution.evaluate.fitness_func_total_reward in memory_evolution.evaluate.__dict__.values()
-    if USER_DEFINED_FITNESS_FUNC:
-        # assert fitness_func not in memory_evolution.evaluate.__dict__.values()
-        assert Phenotype_.fitness_func not in memory_evolution.evaluate.__dict__.values()  # dill
+    # assert fitness_func not in memory_evolution.evaluate.__dict__.values()
+    assert Phenotype_.fitness_func not in memory_evolution.evaluate.__dict__.values()  # dill
 
     logging.info(f"Phenotype: {Phenotype.__qualname__}")
     logging.info(f"Phenotype.fitness_func: {Phenotype.fitness_func}")
@@ -368,15 +305,17 @@ if __name__ == '__main__':
 
     # evaluate_agent(RandomActionAgent(env), env, episodes=2, render=True)
 
-    checkpointer = neat.Checkpointer(generation_interval=200,
-                                     time_interval_seconds=600,
-                                     filename_prefix=os.path.join(
-                                         logging_dir,
-                                         LOG_TAG + '_neat-checkpoint-'))
+    # checkpointer = neat.Checkpointer(generation_interval=200,
+    #                                  time_interval_seconds=600,
+    #                                  filename_prefix=os.path.join(
+    #                                      logging_dir,
+    #                                      LOG_TAG + '_neat-checkpoint-'))
 
     agent.set_env(env)
     logging.info("Evolving...")
-    winner, stats = agent.evolve(EPOCHS, render=render, checkpointer=checkpointer, parallel=parallel,
+    winner, stats = agent.evolve(EPOCHS, render=render,
+                                 # checkpointer=checkpointer,
+                                 parallel=parallel,
                                  filename_tag=LOG_TAG + '_', path_dir=logging_dir, image_format='png',
                                  view_best=False,
                                  stats_ylog=False)
@@ -385,7 +324,7 @@ if __name__ == '__main__':
     logging.info("Evolution finished.")
 
     # render the best agent:
-    evaluate_agent(agent, env, episodes=5, render=render_best,
+    evaluate_agent(agent, env, episodes=3, render=render_best,
                    save_gif=True,
                    save_gif_name=os.path.join(logging_dir, LOG_TAG + '_frames.gif'))
     # note: if you evolve the agent with parallel execution, agent.evolve(parallel=True),
@@ -400,18 +339,27 @@ if __name__ == '__main__':
 
     # testing the agent first arm accuracy:
     accuracy = memory_evolution.evaluate.test_agent_first_arm_accuracy(
-        agent, env, episodes=100,
+        agent, env, episodes=200,
         render=False)
     print(f"test_agent_first_arm_accuracy: {accuracy}")
 
     # test general target-reached rate (to discriminate bad v.s. border-follower v.s. allocentric/egocentric successful agents):
     target_reached_rate = memory_evolution.evaluate.test_agent_target_reached_rate(
-        agent, env, episodes=100,
+        agent, env, episodes=200,
         render=False)
     print(f"test_agent_target_reached_rate: {target_reached_rate}")
 
     # fitness:
     print(f"BestGenomeFitness: {winner.fitness}")
+
+    with open(os.path.join(logging_dir, LOG_TAG + '_results.json'), 'w') as f:
+        json.dump({
+            'BestGenome': {
+                'test_agent_first_arm_accuracy': accuracy,
+                'test_agent_target_reached_rate': target_reached_rate,
+                'Fitness': winner.fitness,
+            }
+        }, f)
 
     env.close()
 

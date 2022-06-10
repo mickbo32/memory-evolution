@@ -21,20 +21,35 @@ from numpy.random import SeedSequence, default_rng
 import pandas as pd
 
 import memory_evolution
+from memory_evolution.logging import TrackingVal
 from ._fitnesses import fitness_func_total_reward
+
+
+_track_level = logging.DEBUG + 5
+_track_accumulate_n = 500
+tracking_reset_actual_time_logger = TrackingVal(logging.getLogger(), _track_level, _track_accumulate_n,
+        msg_fmt="Average(n={n}) Episode reset took 'reset_actual_time': avg={avg:<5} min={min:<5} max={max:<5}")
+tracking_fitness_logger = TrackingVal(logging.getLogger(), _track_level, _track_accumulate_n,
+        msg_fmt="Average(n={n}) Episode fitness:        avg={avg:<5} min={min:<5} max={max:<5}")
+tracking_step_logger = TrackingVal(logging.getLogger(), _track_level, _track_accumulate_n,
+        msg_fmt="Average(n={n}) Episode finished after timesteps: avg={avg:<5} min={min:<5} max={max:<5}")
+tracking_end_t_logger = TrackingVal(logging.getLogger(), _track_level, _track_accumulate_n,
+        msg_fmt="Average(n={n}) Episode 'end_t':        avg={avg:<5} min={min:<5} max={max:<5}")
+tracking_actual_time_logger = TrackingVal(logging.getLogger(), _track_level, _track_accumulate_n,
+        msg_fmt="Average(n={n}) Episode 'actual_time':  avg={avg:<5} min={min:<5} max={max:<5}")
 
 
 def evaluate_agent(agent,
                    env: gym.Env,
                    episodes: int = 1,
-                   episodes_aggr_func: Literal['min', 'max', 'mean', 'median'] = 'min',
+                   episodes_aggr_func: Literal['min', 'max', 'mean', 'median', None] = 'min',
                    fitness_func: Callable[..., float] = fitness_func_total_reward,
                    max_actual_time_per_episode: Optional[Union[int, float]] = None,
                    render: bool = False,
                    save_gif: bool = False,
                    save_gif_dir: str = None,
                    save_gif_name: str = "frames.gif",
-                   ) -> float:
+                   ) -> Union[float, np.ndarray]:
     """Evaluate agent in a gym environment and return the fitness of the agent.
 
     Args:
@@ -48,6 +63,7 @@ def evaluate_agent(agent,
         episodes_aggr_func: function to use to aggregate all the fitness
             values collected for each single independent episode (default is
             'min': The genome's fitness is its worst performance across all runs).
+            If ``None`` return the array with the fitness of each episode.
         fitness_func: callable function to compute the fitness of a single episode,
             this function is called at the end of each episode, it takes **kwargs
             as arguments, and it should return a float, the fitness of the episode;
@@ -82,8 +98,8 @@ def evaluate_agent(agent,
         RuntimeError: if ``max_iters_per_episode`` is not ``None`` and
             episode has not finished after ``max_iters_per_episode`` timesteps.
     """
-    if not isinstance(episodes_aggr_func, str):
-        raise TypeError(f"'episodes_aggr_func' should be str, instead got {type(episodes_aggr_func)}")
+    if episodes_aggr_func is not None and not isinstance(episodes_aggr_func, str):
+        raise TypeError(f"'episodes_aggr_func' should be str or None, instead got {type(episodes_aggr_func)}")
     if not isinstance(fitness_func, Callable):
         raise TypeError(f"'fitness_func' should be Callable, instead got {type(fitness_func)}")
 
@@ -134,7 +150,8 @@ def evaluate_agent(agent,
         start_time_episode = time.perf_counter_ns()
         reset_actual_time = (start_time_episode - start_time_episode_including_reset) / 10 ** 9
         msg = f"Episode reset took {reset_actual_time} actual seconds."
-        logging.log(logging.DEBUG + 5, '\n\t' + msg)
+        logging.log(logging.DEBUG + 3, '\n\t' + msg)
+        tracking_reset_actual_time_logger(reset_actual_time)
         # if render:
         #     print(msg, end='\n\n')
         total_reward = 0.0
@@ -209,9 +226,14 @@ def evaluate_agent(agent,
                 f", for a total of {end_t} simulated seconds"
                 f" (in {actual_time} actual seconds)."
             )
-            logging.log(logging.DEBUG + 5, '\n\t' + '\n\t'.join(msg.split('\n')))
+            logging.log(logging.DEBUG + 4, '\n\t' + '\n\t'.join(msg.split('\n')))
             # if render:
             #     print(msg, end='\n\n')
+            # from global scope (logging):
+            tracking_fitness_logger(fitness)
+            tracking_step_logger(step)
+            tracking_end_t_logger(end_t)
+            tracking_actual_time_logger(actual_time)
             if save_gif:
                 gifname = save_gif_name
                 if episode_str:
@@ -250,8 +272,16 @@ def evaluate_agent(agent,
                 f" (in {(end_time_episode - start_time_episode) / 10 ** 9} actual seconds).")
     if save_gif and save_gif_dir is None:
         temp_dir.cleanup()
-    final_fitness = getattr(np, episodes_aggr_func)(fitnesses)
-    # env.close()  # use it only in main, otherwise it will be closed and
-    # opened again each time it is evaluated.
+    if episodes_aggr_func is not None:
+        final_fitness = getattr(np, episodes_aggr_func)(fitnesses)
+    else:
+        final_fitness = np.asanyarray(fitnesses)
+        if final_fitness.dtype != float and final_fitness.dtype != int and final_fitness.dtype != bool:
+            # note: if for example your machine float is float64, but final_fitness.dtype is float32,
+            #   final_fitness.dtype will not be equal to the python float,
+            #   but this should never be the case anyway because your 'fitness_func' should return a python float,
+            #   not any floating-like object
+            raise RuntimeError("'fitness_func' returned at least a non-float (and non-int and non-bool) object",
+                               final_fitness.dtype)
     return final_fitness
 
