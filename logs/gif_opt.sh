@@ -7,7 +7,11 @@ videos_dst='videos'
 opt_gifs_dst='optimized'  # 'optimized_gifs'
 
 
-if [[ $(find . -maxdepth 1 -name '*.gif') == '' ]]; then
+if [[ $(find . frames_*/ -maxdepth 1 -name '*.gif') == '' ]]; then
+    echo 'No .gif files to convert and optimize in the current working directory.'
+    exit 0
+fi
+if [[ $(find . frames_*/ -maxdepth 1 -name '*.gif' ! -name '*_opt.gif') == '' ]]; then
     echo 'No .gif files to convert and optimize in the current working directory.'
     exit 0
 fi
@@ -68,6 +72,7 @@ for in_file in tmp/*.gif
 do
     out_file=$(echo ${in_file} | sed -E 's/tmp\/(.*)\.gif/\1_opt.gif/')
     gifsicle -O3 --colors 16 --lossy=200 -o "${out_file}" "${in_file}"  # --scale 0.8
+    # TODO: to optimize more, if you don't care to keep a frame for each step, you could convert back the video (with less frames) into a gif.
 done
 
 

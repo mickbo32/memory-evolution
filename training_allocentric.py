@@ -351,17 +351,19 @@ if __name__ == '__main__':
 
     # ----- CLOSING AND REPORTING -----
 
+    ACCURACY_TRIALS = 200
+
     # testing the agent first arm accuracy:
     accuracy = memory_evolution.evaluate.test_agent_first_arm_accuracy(
-        agent, env, episodes=200,
+        agent, env, episodes=ACCURACY_TRIALS,
         render=False)
-    print(f"test_agent_first_arm_accuracy: {accuracy}")
+    print(f"test_agent_first_arm_accuracy (n={ACCURACY_TRIALS}): {accuracy}")
 
     # test general target-reached rate (to discriminate bad v.s. border-follower v.s. allocentric/egocentric successful agents):
     target_reached_rate = memory_evolution.evaluate.test_agent_target_reached_rate(
-        agent, env, episodes=200,
+        agent, env, episodes=ACCURACY_TRIALS,
         render=False)
-    print(f"test_agent_target_reached_rate: {target_reached_rate}")
+    print(f"test_agent_target_reached_rate (n={ACCURACY_TRIALS}): {target_reached_rate}")
 
     # fitness:
     print(f"BestGenomeFitness: {winner.fitness}")

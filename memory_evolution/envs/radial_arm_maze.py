@@ -69,9 +69,9 @@ class RadialArmMaze(MazeForagingEnv):
         self._corridor_width = corridor_width
         self._corridor_angle = 2 * math.asin(self._corridor_width / (2 * self._radius))  # in radians
         self._intra_arms_angle = 2 * math.pi / arms - self._corridor_angle  # in radians
-        self._inner_angle = self._corridor_angle + self._intra_arms_angle  # in radians
-        assert math.isclose(max_corridor_angle, self._inner_angle)
-        self._inner_radius = self._corridor_width / 2 / math.sin(self._inner_angle / 2)
+        self._arms_angle = self._corridor_angle + self._intra_arms_angle  # in radians
+        assert math.isclose(max_corridor_angle, self._arms_angle)
+        self._inner_radius = self._corridor_width / 2 / math.sin(self._arms_angle / 2)
         # print([math.degrees(alpha) for alpha in (self._corridor_angle, self._intra_arms_angle, self._inner_angle)])
 
         # Build maze:
@@ -87,6 +87,14 @@ class RadialArmMaze(MazeForagingEnv):
         self._update_init_params(['platform', 'window_size', 'env_size'])
         assert tuple(env_size) == self._env_size
         assert env_channels == self._env_channels, self._env_channels
+        logging.log(logging.INFO,
+                    f"{type(self).__qualname__}:\n"
+                    f"    arms: {self._arms}\n"
+                    f"    size: {self._env_size} ({self._window_size} pxls)\n"
+                    f"    corridor_width: {self._corridor_width} (~ {self.get_env2win_scaling_factor() * self._corridor_width:.2f} pxls)\n"
+                    f"    radius: {self._radius} (~ {self.get_env2win_scaling_factor() * self._radius:.2f} pxls)\n"
+                    f"    inner_radius: {self._inner_radius:.5f} (~ {self.get_env2win_scaling_factor() * self._inner_radius:.2f} pxls)\n"
+                    f"    arms_angle: {self._arms_angle:.5f} radians ({math.degrees(self._arms_angle):.2f} degrees)\n")
 
     @property
     @override
@@ -112,7 +120,7 @@ class RadialArmMaze(MazeForagingEnv):
         # Rotate the point half self._corridor_angle counterclockwise with the center of the env as origin of rotation:
         # and rotate the inner one of half self._inner_angle:
         corridor_end_point = transform.rotate(corridor_end_point, self._corridor_angle / 2, center, use_radians=True)
-        inner_point = transform.rotate(inner_point, self._inner_angle / 2, center, use_radians=True)
+        inner_point = transform.rotate(inner_point, self._arms_angle / 2, center, use_radians=True)
         _first_corridor_end_point = corridor_end_point
         _first_inner_point = inner_point
 
@@ -127,7 +135,7 @@ class RadialArmMaze(MazeForagingEnv):
             corridor_start_point = transform.rotate(corridor_end_point, self._intra_arms_angle, center,
                                                     use_radians=True)
             points.append(corridor_start_point)
-            inner_point = transform.rotate(inner_point, self._inner_angle, center, use_radians=True)
+            inner_point = transform.rotate(inner_point, self._arms_angle, center, use_radians=True)
             corridor_end_point = transform.rotate(corridor_start_point, self._corridor_angle, center, use_radians=True)
         np.testing.assert_allclose(_first_corridor_end_point, corridor_end_point)
         np.testing.assert_allclose(_first_inner_point, inner_point)

@@ -97,7 +97,7 @@ def plot_avg_df(df: pd.DataFrame, ax=None, avg_label="average", avg_color='b', s
     return ax
 
 
-def plot_best_fitness(all_stats, ylog=False, view=True, filename=None, ylim=None):
+def plot_best_fitness(all_stats, ylog=False, view=True, filename=None, ylim=None, save_csv=True):
     """ Plots the populations' best fitness over generations.
 
     If ``filename`` is None, don't save.
@@ -123,6 +123,8 @@ def plot_best_fitness(all_stats, ylog=False, view=True, filename=None, ylim=None
     best_fitness = pd.DataFrame(best_fitness, columns=generation)
     assert generation is not None
     assert len(best_fitness.index) == len(all_stats) and len(best_fitness.columns) == len(generation)
+    if filename is not None and save_csv:
+        best_fitness.to_csv(filename + '.csv')
 
     # fig, ax = plt.subplots(1)
     # avg_best_fitness = best_fitness.mean(axis=0)
@@ -162,7 +164,7 @@ def plot_best_fitness(all_stats, ylog=False, view=True, filename=None, ylim=None
     plt.close()
 
 
-def plot_genome_metrics(all_stats, ylog=False, view=True, filename=None, ylim=None):
+def plot_genome_metrics(all_stats, ylog=False, view=True, filename=None, ylim=None, save_csv=True):
     """ Plots the populations' best fitness over generations.
 
     If ``filename`` is None, don't save.
@@ -190,6 +192,9 @@ def plot_genome_metrics(all_stats, ylog=False, view=True, filename=None, ylim=No
     assert generation is not None
     assert len(nodes.index) == len(all_stats) and len(nodes.columns) == len(generation)
     assert len(connections.index) == len(all_stats) and len(connections.columns) == len(generation)
+    if filename is not None and save_csv:
+        nodes.to_csv(filename + '_nodes.csv')
+        connections.to_csv(filename + '_connections.csv')
 
     fig, ax = plt.subplots(1)
     plot_avg_df(nodes, ax=ax, avg_label="average nodes (without inputs)", avg_color='g', show_maxminstd_label=False)
@@ -225,13 +230,15 @@ if __name__ == '__main__':
         # pd.set_option('display.max_rows', 80)
 
     # ----- Settings -----
-    RENDER = True  # False  # render or just save gif files
+    RENDER = False  # True  # False  # render or just save gif files
     # ---
     # LOAD_DIR_TAG = '2022-06-08T172246_training_allocentric_100'
-    LOAD_DIR_TAG = 'small_allo_and_ego_test'
+    # LOAD_DIR_TAG = 'small_allo_and_ego_test'
+    LOAD_DIR_TAG = '2022-06-13_training_allocentric_90'
+    # LOAD_DIR_TAG = '2022-06-13_training_egocentric_90'
     LOAD_AGENT_DIR = f"logs/saved_logs/outputs-link/{LOAD_DIR_TAG}/logs/"
     LOAD_FROM: AVAILABLE_LOADING_METHODS = 'pickle'
-    N_EPISODES = 0  # 5
+    N_EPISODES = 0  # 3  # 0  # 5
     LOGGING_DIR = 'logs'
 
     # logging settings:
@@ -278,22 +285,31 @@ if __name__ == '__main__':
     #     stats = pickle.load(f)
     # sys.exit()
 
+    # if N_EPISODES > 0:
+    #     # Evaluate just one agent:
+    #     LOAD_AGENT, agent = next(iter(agents.items()))  # agents['LOAD_AGENT']  # select which agent to evaluate
+    #     print(f'Evaluating agent {LOAD_AGENT} ...\n')
+    #     evaluate_agent(agent, env, episodes=N_EPISODES, render=RENDER,
+    #                    save_gif=True,
+    #                    save_gif_name=os.path.join(LOGGING_DIR, LOADED_DIR_TAG_UTCNOW + '__LOAD_AGENT_' + LOAD_AGENT + '_frames.gif'))
+    #     # Note: if you run twice evaluate_agent with the same name it will overwrite the previous gif
+    #     #   (but if save_gif_dir is provided it will raise an error because the directory already exists).
     if N_EPISODES > 0:
-        LOAD_AGENT, agent = next(iter(agents.items()))  # agents['LOAD_AGENT']  # select which agent to evaluate
-        print('Evaluating agent ...\n')
-        evaluate_agent(agent, env, episodes=N_EPISODES, render=RENDER,
-                       save_gif=True,
-                       save_gif_name=os.path.join(LOGGING_DIR, LOADED_DIR_TAG_UTCNOW + '__LOAD_AGENT_' + LOAD_AGENT + '_frames.gif'))
-        # Note: if you run twice evaluate_agent with the same name it will overwrite the previous gif
-        #   (but if save_gif_dir is provided it will raise an error because the directory already exists).
+        print('Rendering agents ...\n')
+        for LOAD_AGENT, agent in agents.items():
+            evaluate_agent(agent, env, episodes=N_EPISODES, render=RENDER,
+                           save_gif=True,
+                           save_gif_name=os.path.join(LOGGING_DIR, LOAD_AGENT + '_LOADED_AGENT__' + LOADED_DIR_TAG_UTCNOW + '_frames.gif'))
+            # Note: if you run twice evaluate_agent with the same name it will overwrite the previous gif
+            #   (but if save_gif_dir is provided it will raise an error because the directory already exists).
 
     # loading results:
     LOAD_ALL_RESULTS = os.path.join(LOAD_AGENT_DIR, LOAD_DIR_TAG + '_all_results.csv')
     ALL_RESULTS_DESCRIBTION = os.path.join(LOAD_AGENT_DIR, LOAD_DIR_TAG + '_all_results_description.csv')
     ALL_RESULTS_PLOT = os.path.join(LOAD_AGENT_DIR, LOAD_DIR_TAG + '_bar_plot_with_error_bars.png')
     if os.path.exists(LOAD_ALL_RESULTS):
-        assert os.path.exists(ALL_RESULTS_DESCRIBTION)
-        assert os.path.exists(ALL_RESULTS_PLOT)
+        assert os.path.exists(ALL_RESULTS_DESCRIBTION), ALL_RESULTS_DESCRIBTION
+        assert os.path.exists(ALL_RESULTS_PLOT), ALL_RESULTS_PLOT
         all_results = pd.read_csv(LOAD_ALL_RESULTS, index_col=0)
     else:
         all_results = []
@@ -319,8 +335,15 @@ if __name__ == '__main__':
     # --- stats and genome visualization ---
     BEST_FITNESS_PLOT = os.path.join(LOAD_AGENT_DIR, LOAD_DIR_TAG + '_best_fitness.png')
     BEST_GENOME_METRICS = os.path.join(LOAD_AGENT_DIR, LOAD_DIR_TAG + '_genome_metrics.png')
-    if not os.path.exists(BEST_FITNESS_PLOT):
-        assert not os.path.exists(BEST_GENOME_METRICS)
+    if os.path.exists(BEST_FITNESS_PLOT):
+        assert os.path.exists(BEST_GENOME_METRICS), BEST_GENOME_METRICS
+        best_fitness = pd.read_csv(BEST_FITNESS_PLOT + '.csv', index_col=0)
+        nodes = pd.read_csv(BEST_GENOME_METRICS + '_nodes.csv', index_col=0)
+        connections = pd.read_csv(BEST_GENOME_METRICS + '_connections.csv', index_col=0)
+        pass  # put a checkpoint here and start the debugger to analyze these data (or simply run it in the console)
+        #import pdb; pdb.set_trace()
+    else:
+        assert not os.path.exists(BEST_GENOME_METRICS), BEST_GENOME_METRICS
         # LOAD_ALL_STATS = os.path.join(LOAD_AGENT_DIR, LOAD_DIR_TAG + '_all_stats.pickle')
         # NOTE: all stats are too heavy to be loaded and pickled all together (but okay to be loaded only)
         print("Loading and working with stats...")

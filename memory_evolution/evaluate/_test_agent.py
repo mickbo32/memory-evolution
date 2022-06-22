@@ -174,6 +174,8 @@ def test_agent_first_arm_accuracy(
         # Reset env and agent:
         observation, info = env.reset(return_info=True)
         agent.reset()
+        logging.log(logging.DEBUG + 8, f"env.agent.pos: {env.agent.pos}; "
+                                       f"env.agent.head_direction: {env.agent.head_direction};")
         assert env.t == 0., env.t
         agent_positions = []
         agent_positions.append(env.agent.pos)
@@ -238,7 +240,7 @@ def test_agent_first_arm_accuracy(
 
         if done:
             if isinstance(env, memory_evolution.envs.BaseForagingEnv):
-                assert step == env.step_count == info['debug_info']['_is_done']['step_count'] + 1, (
+                assert step == env.step_count == info['debug_info']['_is_done']['step_count'], (
                     step, env.step_count, info['debug_info']['_is_done']['step_count'])
                 assert info['debug_info']['_is_done']['done'] is True, info['debug_info']['_is_done']
                 assert (info['debug_info']['_is_done']['food_items_collected'] == info['debug_info']['_is_done']['n_food_items']
@@ -256,7 +258,7 @@ def test_agent_first_arm_accuracy(
             logging.log(logging.DEBUG + 4, '\n\t' + '\n\t'.join(msg.split('\n')))
         else:
             if isinstance(env, memory_evolution.envs.BaseForagingEnv):
-                assert step == env.step_count == info['debug_info']['_is_done']['step_count'] + 1, (
+                assert step == env.step_count == info['debug_info']['_is_done']['step_count'], (
                     step, env.step_count, info['debug_info']['_is_done']['step_count'])
                 assert info['debug_info']['_is_done']['done'] is False, info['debug_info']['_is_done']
                 assert not (info['debug_info']['_is_done']['food_items_collected'] == info['debug_info']['_is_done']['n_food_items']
@@ -267,7 +269,7 @@ def test_agent_first_arm_accuracy(
                 f" (in {(end_time_episode - start_time_episode) / 10 ** 9} actual seconds).")
     accuracy = successes / episodes
     assert 0. <= accuracy <= 1., (accuracy, successes, episodes)
-    logging.info(f"test_agent_first_arm_accuracy: {accuracy}")
+    logging.info(f"test_agent_first_arm_accuracy (episodes={episodes}): {accuracy}")
     return accuracy
 
 
@@ -318,6 +320,6 @@ def test_agent_target_reached_rate(
 
     success_rate = n_successes / episodes
     assert 0. <= success_rate <= 1., (success_rate, successes, episodes)
-    logging.info(f"test_agent_target_reached_rate: {success_rate}")
+    logging.info(f"test_agent_target_reached_rate (episodes={episodes}): {success_rate}")
     return success_rate
 
