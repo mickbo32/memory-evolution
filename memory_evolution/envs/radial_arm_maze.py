@@ -32,7 +32,7 @@ class RadialArmMaze(MazeForagingEnv):
     def __init__(self,
                  arms: int = 4,
                  corridor_width: Optional[float] = None,
-                 window_size: Union[int] = 320,
+                 window_size: Union[int] = 200,
                  env_size: Union[float] = 1.,
                  **kwargs
                  ) -> None:

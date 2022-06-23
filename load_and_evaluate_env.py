@@ -8,6 +8,7 @@ import sys
 import time
 import typing
 from typing import Literal, Optional
+import warnings
 
 import gym
 import matplotlib as mpl
@@ -36,7 +37,7 @@ if __name__ == '__main__':
         mpl.use('Qt5Agg')  # Change matplotlib backend to show correctly in PyCharm.
 
     # ----- Settings -----
-    RENDER = True  # False  # render or just save gif files
+    RENDER = False  # True  # False  # render or just save gif files
     # ---
     # LOAD_AGENT = '8539704_2022-05-19_163834.593420+0000'
     # LOAD_AGENT = '8541080_2022-05-20_214011.159858+0000'
@@ -44,14 +45,14 @@ if __name__ == '__main__':
     # LOAD_AGENT_DIR = "logs/saved_logs/outputs-link/no-date0/logs/"
     # LOAD_AGENT = '8565200-8_2022-06-11_103533.997939+0000'  # first_arm_accuracy, target_reached_rate, fitness: 0.625; 1; -83.55;
     # LOAD_AGENT = '8564839-1_2022-06-10_151155.886805+0000'  # first_arm_accuracy, target_reached_rate, fitness: 0.995; 0.995; -82.25;
-    # LOAD_AGENT = '8564839-18_2022-06-10_161004.988468+0000'  # first_arm_accuracy, target_reached_rate, fitness: 1; 1; -76.25;
-    # LOAD_AGENT_DIR = "logs/saved_logs/outputs-link/2022-06-13_training_allocentric_90/logs/"
+    LOAD_AGENT = '8564839-18_2022-06-10_161004.988468+0000'  # first_arm_accuracy, target_reached_rate, fitness: 1; 1; -76.25;
+    LOAD_AGENT_DIR = "logs/saved_logs/outputs-link/2022-06-13_training_allocentric_90/logs/"
     # LOAD_AGENT = '8565845-1_2022-06-12_093058.453153+0000'  # first_arm_accuracy, target_reached_rate, fitness: 0.99; 0.995; -71.8;
-    LOAD_AGENT = '8566609-28_2022-06-13_115413.598940+0000'  # first_arm_accuracy, target_reached_rate, fitness: 1; 1; -68.55;
-    LOAD_AGENT_DIR = "logs/saved_logs/outputs-link/2022-06-13_training_egocentric_90/logs/"
+    # LOAD_AGENT = '8566609-28_2022-06-13_115413.598940+0000'  # first_arm_accuracy, target_reached_rate, fitness: 1; 1; -68.55;
+    # LOAD_AGENT_DIR = "logs/saved_logs/outputs-link/2022-06-13_training_egocentric_90/logs/"
     # LOAD_FROM: AVAILABLE_LOADING_METHODS = 'checkpoint'
     LOAD_FROM: AVAILABLE_LOADING_METHODS = 'pickle'
-    N_EPISODES = 12  # 0  # 5
+    N_EPISODES = 3  # 12  # 0  # 5
     LOGGING_DIR = 'logs'
     # ---
     # CHECKPOINT_NUMBER = None  # if None, load the last checkpoint
@@ -97,8 +98,49 @@ if __name__ == '__main__':
     #                     init_agent_position=(.9, .5), init_food_positions=((.5, .9),),
     #                     vision_depth=.2, vision_field_angle=135, max_steps=400, vision_resolution=8)
 
-    env = load_env(LOAD_AGENT, LOAD_AGENT_DIR)
-    # test trained agents in env without landmarks: TODO
+    #env = load_env(LOAD_AGENT, LOAD_AGENT_DIR)
+
+    # test in env without landmarks:
+    warnings.warn("The environment is NOT LOADED, a different one is created for testing...")
+    # # starting position up, target East:
+    env = RadialArmMaze(arms=4, corridor_width=0.2, window_size=200, env_size=1.0, **{
+        'agent_size': 0.075, 'food_size': 0.05, 'n_food_items': 1, 'max_steps': 400,
+        'vision_depth': 0.2, 'vision_field_angle': 135, 'vision_resolution': 3, 'vision_channels': 3,
+        'vision_point_radius': 0.04,
+        'agent_color': np.asarray([0, 255, 255], dtype=np.uint8),
+        'background_color': np.asarray([0, 0, 0], dtype=np.uint8),
+        'outside_color': np.asarray([255, 0, 0], dtype=np.uint8),
+        'food_color': np.asarray([0, 200, 55], dtype=np.uint8),
+        'food_visible': False, 'random_init_agent_position': None,
+        'init_agent_position': (.5, .9),
+        'init_food_positions': ((0.9, 0.5),),
+        # 'init_food_positions': ((0.1, 0.5),),
+        'landmark_size': 0.25, 'init_landmarks_positions': None, 'landmarks_colors': None,
+        'borders': None, 'pairing_init_food_positions': None, 'rotation_step': 15.0, 'forward_step': 0.01,
+        'observation_noise': None, 'inverted_color_rendering': True, 'fps': None, 'seed': None})
+    # # allocentric
+    # env = RadialArmMaze(arms=4, corridor_width=0.2, window_size=200, env_size=1.0, **{
+    #     'agent_size': 0.075, 'food_size': 0.05, 'n_food_items': 1, 'max_steps': 400,
+    #     'vision_depth': 0.2, 'vision_field_angle': 135, 'vision_resolution': 3, 'vision_channels': 3, 'vision_point_radius': 0.04,
+    #     'agent_color': np.asarray([  0, 255, 255], dtype=np.uint8), 'background_color': np.asarray([0, 0, 0], dtype=np.uint8),
+    #     'outside_color': np.asarray([255,   0,   0], dtype=np.uint8), 'food_color': np.asarray([  0, 200,  55], dtype=np.uint8),
+    #     'food_visible': False, 'random_init_agent_position': ((0.5, 0.1), (0.5, 0.9), (0.1, 0.5)),
+    #     'init_food_positions': ((0.9, 0.5),),
+    #     'landmark_size': 0.25, 'init_landmarks_positions': None, 'landmarks_colors': None,
+    #     'borders': None, 'pairing_init_food_positions': None, 'rotation_step': 15.0, 'forward_step': 0.01,
+    #     'observation_noise': None, 'init_agent_position': None, 'inverted_color_rendering': True,
+    #     'fps': None, 'seed': None})
+    # # egocentric
+    # env = RadialArmMaze(arms=4, corridor_width=0.2, window_size=200, env_size=1.0, **{
+    #     'agent_size': 0.075, 'food_size': 0.05, 'n_food_items': 1, 'max_steps': 400,
+    #     'vision_depth': 0.2, 'vision_field_angle': 135, 'vision_resolution': 3, 'vision_channels': 3, 'vision_point_radius': 0.04,
+    #     'agent_color': np.asarray([  0, 255, 255], dtype=np.uint8), 'background_color': np.asarray([0, 0, 0], dtype=np.uint8),
+    #     'outside_color': np.asarray([255,   0,   0], dtype=np.uint8), 'food_color': np.array([  0, 200,  55], dtype=np.uint8),
+    #     'food_visible': False, 'random_init_agent_position': ((0.5, 0.1), (0.5, 0.9), (0.1, 0.5), (0.9, 0.5)),
+    #     'pairing_init_food_positions': (((0.9, 0.5),), ((0.1, 0.5),), ((0.5, 0.1),), ((0.5, 0.9),)),
+    #     'landmark_size': 0.25, 'init_landmarks_positions': None, 'landmarks_colors': None,
+    #     'borders': None, 'rotation_step': 15.0, 'forward_step': 0.01, 'observation_noise': None, 'init_agent_position': None,
+    #     'init_food_positions': None, 'inverted_color_rendering': True, 'fps': None, 'seed': None})
     '''
     from logs:
     allo:

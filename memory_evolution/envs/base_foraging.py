@@ -477,12 +477,12 @@ class BaseForagingEnv(gym.Env, MustOverride):
     observation_space: spaces.Box
 
     def __init__(self,
-                 window_size: Union[int, Sequence[int]] = 320,  # (640, 480),
+                 window_size: Union[int, Sequence[int]] = 200,  # 320,  # (640, 480),
                  env_size: Union[float, Sequence[float]] = 1.,
                  n_food_items: int = 3,
                  rotation_step: float = 15.,
                  forward_step: float = .01,
-                 agent_size: float = .10,
+                 agent_size: float = .075,
                  food_size: float = .05,
                  vision_depth: float = .2,
                  vision_field_angle: float = 180.,

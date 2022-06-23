@@ -117,7 +117,9 @@ fi
 
 # get .gif duration and info:
 # $ gifsicle --info myfile.gif  # for each frame: duration each frame, color info, image size
+# $ gifsicle --info *.gif | grep images  # get the number of frames
 # $ exiftool myfile.gif  # total duration, number of frames, image size, ...
+# $ exiftool --info *.gif | grep -E 'File Name|Directory|File Size|Bits Per Pixel|Frame Count|Duration|Image Size'
 # check video FPS:
 # $ mediainfo myfile.mp4 | grep -i fps
 
