@@ -31,15 +31,32 @@ from memory_evolution.logging import set_main_logger
 from memory_evolution.load import load_env, load_agent, get_checkpoint_number, AVAILABLE_LOADING_METHODS
 
 
-def plot_bars(df: pd.DataFrame, ax, ylabel=None, title=None):
+def plot_bars(df: pd.DataFrame, ax, ylabel=None, title=None, ylim=None,
+              std=True, box=False,
+              color=None, ecolor='black', mincolor='gray', maxcolor='gray',
+              alpha=0.5,
+              ):
     """Plot metrics along axis=0"""
+    if sum((std, box)) > 1:
+        raise ValueError("select no more than one among 'std' and 'box'")
     x = np.arange(len(df.columns))
-    ax.bar(x, df.mean(axis=0), yerr=df.std(axis=0),
-           align='center', alpha=0.5, ecolor='black', capsize=10)
-    ax.plot(x, df.max(axis=0), 'x', color='gray')  # you can also use plt.scatter()
-    ax.plot(x, df.min(axis=0), 'x', color='gray')  # you can also use plt.scatter()
+    std_bars = {}
+    if std:
+        std_bars = {'yerr': df.std(axis=0),
+                    'align': 'center', 'alpha': alpha, 'ecolor': ecolor, 'capsize': 10}
+    ax.bar(x, df.mean(axis=0), color=color,
+           **std_bars)
+    if std:
+        ax.plot(x, df.max(axis=0), 'x', color=maxcolor)  # you can also use plt.scatter()
+        ax.plot(x, df.min(axis=0), 'x', color=mincolor)  # you can also use plt.scatter()
+    if box:
+        cmap = plt.get_cmap("tab10")
+        df.boxplot(ax=ax, positions=x, widths=.5, capprops={'color': cmap(0)})  # , showfliers=False, showmeans=True, sym='x', flierprops={'color': 'gray'}
+
     if ylabel is not None:
         ax.set_ylabel(ylabel)
+    if ylim is not None:
+        ax.set_ylim(ylim)
     ax.set_xticks(x)
     ax.set_xticklabels(df.columns)
     ax.yaxis.grid(True)
@@ -74,7 +91,7 @@ def plot_accuracy_results(all_results: pd.DataFrame, view=True, filename=None):
     if filename is not None:
         plt.savefig(filename)
     if view:
-        plt.show()
+        plt.show(block=True)
 
     plt.close()
 
@@ -97,15 +114,11 @@ def plot_avg_df(df: pd.DataFrame, ax=None, avg_label="average", avg_color='b', s
     return ax
 
 
-def plot_best_fitness(all_stats, ylog=False, view=True, filename=None, ylim=None, save_csv=True):
-    """ Plots the populations' best fitness over generations.
+def get_best_fitness(all_stats, filename=None) -> pd.DataFrame:
+    """ Get the populations' best fitness over generations.
 
     If ``filename`` is None, don't save.
     """
-    if plt is None:
-        warnings.warn("This display is not available due to a missing optional dependency (matplotlib)")
-        return
-
     assert len(all_stats) >= 1, "'all_stats' should have at least one evolution process"
     if not isinstance(next(iter(all_stats.values())), neat.statistics.StatisticsReporter):
         raise TypeError(next(iter(all_stats.values())))
@@ -123,8 +136,17 @@ def plot_best_fitness(all_stats, ylog=False, view=True, filename=None, ylim=None
     best_fitness = pd.DataFrame(best_fitness, columns=generation)
     assert generation is not None
     assert len(best_fitness.index) == len(all_stats) and len(best_fitness.columns) == len(generation)
-    if filename is not None and save_csv:
+    if filename is not None:
         best_fitness.to_csv(filename + '.csv')
+
+    return best_fitness
+
+
+def plot_best_fitness(best_fitness: pd.DataFrame, ylog=False, view=True, filename=None, ylim=None, save_csv=True):
+    """ Plots the populations' best fitness over generations.
+
+    If ``filename`` is None, don't save.
+    """
 
     # fig, ax = plt.subplots(1)
     # avg_best_fitness = best_fitness.mean(axis=0)
@@ -136,7 +158,7 @@ def plot_best_fitness(all_stats, ylog=False, view=True, filename=None, ylim=None
     #                 facecolor='yellow', alpha=0.5, label='\u00B11 std')
     ax = plot_avg_df(best_fitness, avg_label="average best fitness")
 
-    plt.title(f"Population's best fitness (averaged across {len(all_stats)} evolution processes)")
+    plt.title(f"Population's best fitness (averaged across {len(best_fitness)} evolution processes)")
     ax.set_xlabel("Generations")
     ax.set_ylabel("Fitness")
     ax.grid()
@@ -159,20 +181,16 @@ def plot_best_fitness(all_stats, ylog=False, view=True, filename=None, ylim=None
     if filename is not None:
         plt.savefig(filename)
     if view:
-        plt.show()
+        plt.show(block=True)
 
     plt.close()
 
 
-def plot_genome_metrics(all_stats, ylog=False, view=True, filename=None, ylim=None, save_csv=True):
-    """ Plots the populations' best fitness over generations.
+def get_genome_metrics(all_stats, filename=None) -> (pd.DataFrame, pd.DataFrame):
+    """ Get the populations' best genome metrics over generations.
 
     If ``filename`` is None, don't save.
     """
-    if plt is None:
-        warnings.warn("This display is not available due to a missing optional dependency (matplotlib)")
-        return
-
     assert len(all_stats) >= 1, "'all_stats' should have at least one evolution process"
     if not isinstance(next(iter(all_stats.values())), neat.statistics.StatisticsReporter):
         raise TypeError(next(iter(all_stats.values())))
@@ -192,25 +210,41 @@ def plot_genome_metrics(all_stats, ylog=False, view=True, filename=None, ylim=No
     assert generation is not None
     assert len(nodes.index) == len(all_stats) and len(nodes.columns) == len(generation)
     assert len(connections.index) == len(all_stats) and len(connections.columns) == len(generation)
-    if filename is not None and save_csv:
+    if filename is not None:
         nodes.to_csv(filename + '_nodes.csv')
         connections.to_csv(filename + '_connections.csv')
+
+    return nodes, connections
+
+
+def plot_genome_metrics(nodes: pd.DataFrame, connections: pd.DataFrame,
+                        # ylog=False,
+                        view=True, filename=None, ylim=None, save_csv=True):
+    """ Plots the populations' best genome metrics over generations.
+
+    If ``filename`` is None, don't save.
+    """
+    assert len(nodes) == len(connections)
+    assert len(nodes.index) == len(connections.index)
+    assert len(nodes.columns) == len(connections.columns)
 
     fig, ax = plt.subplots(1)
     plot_avg_df(nodes, ax=ax, avg_label="average nodes (without inputs)", avg_color='g', show_maxminstd_label=False)
     plot_avg_df(connections, ax=ax, avg_label="average connections", avg_color='b')
 
-    plt.title(f"Population's best genome (averaged across {len(all_stats)} evolution processes)")
+    plt.title(f"Population's best genome (averaged across {len(nodes)} evolution processes)")
     ax.set_xlabel("Generations")
     ax.set_ylabel("Number of")
     ax.grid()
     ax.legend(loc="best")
+    if ylim is not None:
+        ax.set_ylim(ylim)
 
     plt.tight_layout()
     if filename is not None:
         plt.savefig(filename)
     if view:
-        plt.show()
+        plt.show(block=True)
 
     plt.close()
 
@@ -233,9 +267,9 @@ if __name__ == '__main__':
     RENDER = False  # True  # False  # render or just save gif files
     # ---
     # LOAD_DIR_TAG = '2022-06-08T172246_training_allocentric_100'
-    # LOAD_DIR_TAG = 'small_allo_and_ego_test'
+    LOAD_DIR_TAG = '2022-06-10_small_allo_and_ego_test'
     # LOAD_DIR_TAG = '2022-06-13_training_allocentric_90'
-    LOAD_DIR_TAG = '2022-06-13_training_egocentric_90'
+    # LOAD_DIR_TAG = '2022-06-13_training_egocentric_90'
     # LOAD_DIR_TAG = '2022-06-16T173323_allo30_same-prob_600epochs'
     # LOAD_DIR_TAG = '2022-06-23T073841_ego30_same-prob_600epochs'
     # LOAD_DIR_TAG = '2022-06-20T085938_allo30_unconnected'
@@ -288,29 +322,6 @@ if __name__ == '__main__':
         'landmark_size': 0.25, 'init_landmarks_positions': None, 'landmarks_colors': None,
         'borders': None, 'pairing_init_food_positions': None, 'rotation_step': 15.0, 'forward_step': 0.01,
         'observation_noise': None, 'inverted_color_rendering': True, 'fps': None, 'seed': None})
-    # # allocentric
-    # env = RadialArmMaze(arms=4, corridor_width=0.2, window_size=200, env_size=1.0, **{
-    #     'agent_size': 0.075, 'food_size': 0.05, 'n_food_items': 1, 'max_steps': 400,
-    #     'vision_depth': 0.2, 'vision_field_angle': 135, 'vision_resolution': 3, 'vision_channels': 3, 'vision_point_radius': 0.04,
-    #     'agent_color': np.asarray([  0, 255, 255], dtype=np.uint8), 'background_color': np.asarray([0, 0, 0], dtype=np.uint8),
-    #     'outside_color': np.asarray([255,   0,   0], dtype=np.uint8), 'food_color': np.asarray([  0, 200,  55], dtype=np.uint8),
-    #     'food_visible': False, 'random_init_agent_position': ((0.5, 0.1), (0.5, 0.9), (0.1, 0.5)),
-    #     'init_food_positions': ((0.9, 0.5),),
-    #     'landmark_size': 0.25, 'init_landmarks_positions': None, 'landmarks_colors': None,
-    #     'borders': None, 'pairing_init_food_positions': None, 'rotation_step': 15.0, 'forward_step': 0.01,
-    #     'observation_noise': None, 'init_agent_position': None, 'inverted_color_rendering': True,
-    #     'fps': None, 'seed': None})
-    # # egocentric
-    # env = RadialArmMaze(arms=4, corridor_width=0.2, window_size=200, env_size=1.0, **{
-    #     'agent_size': 0.075, 'food_size': 0.05, 'n_food_items': 1, 'max_steps': 400,
-    #     'vision_depth': 0.2, 'vision_field_angle': 135, 'vision_resolution': 3, 'vision_channels': 3, 'vision_point_radius': 0.04,
-    #     'agent_color': np.asarray([  0, 255, 255], dtype=np.uint8), 'background_color': np.asarray([0, 0, 0], dtype=np.uint8),
-    #     'outside_color': np.asarray([255,   0,   0], dtype=np.uint8), 'food_color': np.array([  0, 200,  55], dtype=np.uint8),
-    #     'food_visible': False, 'random_init_agent_position': ((0.5, 0.1), (0.5, 0.9), (0.1, 0.5), (0.9, 0.5)),
-    #     'pairing_init_food_positions': (((0.9, 0.5),), ((0.1, 0.5),), ((0.5, 0.1),), ((0.5, 0.9),)),
-    #     'landmark_size': 0.25, 'init_landmarks_positions': None, 'landmarks_colors': None,
-    #     'borders': None, 'rotation_step': 15.0, 'forward_step': 0.01, 'observation_noise': None, 'init_agent_position': None,
-    #     'init_food_positions': None, 'inverted_color_rendering': True, 'fps': None, 'seed': None})
     '''
     from logs:
     allo:
@@ -347,6 +358,31 @@ if __name__ == '__main__':
         ...
     NameError: name 'ff_time' is not defined
     '''
+    # test me:
+    _prev_ff = None
+    for LOAD_AGENT in agents_tags:
+        print(LOAD_AGENT)
+        _Phenotype = type(agents[LOAD_AGENT])
+
+        # TODO: tmp, just to be sure the right phenotype was loaded in the experiments
+        assert _Phenotype is memory_evolution.agents.ConstantSpeedRnnNeatAgent, _Phenotype
+        assert _Phenotype.fitness_func is not memory_evolution.agents.BaseNeatAgent.fitness_func, 'tmp, it is okay if it fails when you change stuffs'
+        assert _Phenotype.eval_num_episodes is not memory_evolution.agents.BaseNeatAgent.eval_num_episodes, 'tmp, it is okay if it fails when you change stuffs'
+        assert _Phenotype.fitness_func is not memory_evolution.agents.BaseNeatAgent.fitness_func, 'tmp, it is okay if it fails when you change stuffs'
+        assert _Phenotype.eval_num_episodes == 20, 'tmp, it is okay if it fails when you change stuffs'
+
+        # FIXME: super shortcut because the previous patch don't work anymore (NameError: name 'ff_time' is not defined)
+        ff_time = memory_evolution.evaluate.fitness_func_time_minimize
+        min_ff_time = ff_time(reward=None, steps=env.max_steps, done=None, env=None, agent=None)
+        # user defined fitness_func (outside any module, just in main) so it can be pickled with dill.
+        def fitness_func(*, reward, steps, done, env, agent, **kwargs) -> float:
+            ft = ff_time(reward=reward, steps=steps, done=done, env=env, agent=agent, **kwargs)
+            assert min_ff_time <= ft <= ff_time.max
+            fitness = ft
+            return fitness
+        fitness_func.min = min_ff_time
+        fitness_func.max = ff_time.max
+        _Phenotype.fitness_func = fitness_func
     # ---
 
     # ----- ANALYSE -----
@@ -387,11 +423,12 @@ if __name__ == '__main__':
     LOAD_ALL_RESULTS = os.path.join(LOAD_AGENT_DIR, LOAD_DIR_TAG + '_all_results.csv')
     ALL_RESULTS_DESCRIPTION = os.path.join(LOAD_AGENT_DIR, LOAD_DIR_TAG + '_all_results_description.csv')
     ALL_RESULTS_PLOT = os.path.join(LOAD_AGENT_DIR, LOAD_DIR_TAG + '_bar_plot_with_error_bars.png')
+    reloaded = False
     if os.path.exists(LOAD_ALL_RESULTS):
         assert os.path.exists(ALL_RESULTS_DESCRIPTION), ALL_RESULTS_DESCRIPTION
-        assert os.path.exists(ALL_RESULTS_PLOT), ALL_RESULTS_PLOT
         all_results = pd.read_csv(LOAD_ALL_RESULTS, index_col=0)
     else:
+        reloaded = True
         all_results = []
         all_results_index = []
         for LOAD_AGENT in agents_tags:
@@ -406,7 +443,11 @@ if __name__ == '__main__':
         all_results = pd.DataFrame(all_results, index=all_results_index)
         all_results.to_csv(LOAD_ALL_RESULTS)
         all_results.describe().to_csv(ALL_RESULTS_DESCRIPTION)
-        plot_accuracy_results(all_results, view=True, filename=ALL_RESULTS_PLOT)
+    if os.path.exists(ALL_RESULTS_PLOT):
+        assert not reloaded, "data are reloaded, but old plot is still there"
+    else:
+        print("Plotting...")
+        plot_accuracy_results(all_results, view=False, filename=ALL_RESULTS_PLOT)
     print(all_results)
     # print(all_results.info())
     print(all_results.describe())
@@ -415,15 +456,20 @@ if __name__ == '__main__':
     # --- stats and genome stats on evolution visualization ---
     BEST_FITNESS_PLOT = os.path.join(LOAD_AGENT_DIR, LOAD_DIR_TAG + '_best_fitness.png')
     BEST_GENOME_METRICS = os.path.join(LOAD_AGENT_DIR, LOAD_DIR_TAG + '_genome_metrics.png')
-    if os.path.exists(BEST_FITNESS_PLOT):
-        assert os.path.exists(BEST_GENOME_METRICS), BEST_GENOME_METRICS
+    reloaded = False
+    if os.path.exists(BEST_FITNESS_PLOT + '.csv'):
+        assert os.path.exists(BEST_GENOME_METRICS + '_nodes.csv'), BEST_GENOME_METRICS
+        assert os.path.exists(BEST_GENOME_METRICS + '_connections.csv'), BEST_GENOME_METRICS
         best_fitness = pd.read_csv(BEST_FITNESS_PLOT + '.csv', index_col=0)
         nodes = pd.read_csv(BEST_GENOME_METRICS + '_nodes.csv', index_col=0)
         connections = pd.read_csv(BEST_GENOME_METRICS + '_connections.csv', index_col=0)
-        pass  # put a checkpoint here and start the debugger to analyze these data (or simply run it in the console)
-        #import pdb; pdb.set_trace()
+        best_fitness.columns = best_fitness.columns.map(int)
+        nodes.columns = nodes.columns.map(int)
+        connections.columns = connections.columns.map(int)
     else:
-        assert not os.path.exists(BEST_GENOME_METRICS), BEST_GENOME_METRICS
+        reloaded = True
+        assert not os.path.exists(BEST_GENOME_METRICS + '_nodes.csv'), BEST_GENOME_METRICS
+        assert not os.path.exists(BEST_GENOME_METRICS + '_connections.csv'), BEST_GENOME_METRICS
         # LOAD_ALL_STATS = os.path.join(LOAD_AGENT_DIR, LOAD_DIR_TAG + '_all_stats.pickle')
         # NOTE: all stats are too heavy to be loaded and pickled all together (but okay to be loaded only)
         print("Loading and working with stats...")
@@ -448,26 +494,31 @@ if __name__ == '__main__':
             #                           filename_speciation=os.path.join(LOGGING_DIR, LOADED_DIR_TAG_UTCNOW + '__LOAD_AGENT_' + LOAD_AGENT + "_speciation.png"))
 
         # print(all_stats)
+        best_fitness = get_best_fitness(all_stats, filename=BEST_FITNESS_PLOT)
+        nodes, connections = get_genome_metrics(all_stats, filename=BEST_GENOME_METRICS)
+    if os.path.exists(BEST_FITNESS_PLOT):
+        assert not reloaded, "data are reloaded, but old plot is still there"
+    else:
         agent = next(iter(agents.values()))
-        try:
-            ylim = (type(agent).fitness_func.min, type(agent).fitness_func.max)
-        except AttributeError as err:
-            warnings.warn(f"{type(err).__qualname__}: {err.args}")
-            ylim = (-400, 0)
+        ylim = (type(agent).fitness_func.min, type(agent).fitness_func.max)
+        # ylim = (-400, 0)
         assert len(ylim) == 2, ylim
         assert ylim[0] <= ylim[1], ylim
         # ylim_range = ylim[1] - ylim[0]
         # offset = ylim_range * .03
         # ylim = (ylim[0] - offset, ylim[1] + offset)
-        plot_best_fitness(all_stats, view=True,
+        plot_best_fitness(best_fitness,
+                          view=False,
                           # filename=None,
                           filename=BEST_FITNESS_PLOT,
                           ylim=ylim)
-
-        plot_genome_metrics(all_stats, view=True,
+    if os.path.exists(BEST_GENOME_METRICS):
+        assert not reloaded, "data are reloaded, but old plot is still there"
+    else:
+        plot_genome_metrics(nodes, connections,
+                            view=False,  # ylim=(0,1),
                             # filename=None,
-                            filename=BEST_GENOME_METRICS,
-                            ylim=ylim)
+                            filename=BEST_GENOME_METRICS)
 
     # --- genome visualization ---
     for LOAD_AGENT in agents_tags:
@@ -498,7 +549,6 @@ if __name__ == '__main__':
     NEW_RESULTS_PLOT = os.path.join(LOGGING_DIR, LOAD_DIR_TAG + f'_new{NEW_NUMBER}_results_bar_plot.png')
     if os.path.exists(NEW_RESULTS):
         assert os.path.exists(NEW_RESULTS_DESCRIPTION), NEW_RESULTS_DESCRIPTION
-        assert os.path.exists(NEW_RESULTS_PLOT), NEW_RESULTS_PLOT
         new_results = pd.read_csv(NEW_RESULTS, index_col=0)
     else:
         new_results = []
@@ -538,6 +588,8 @@ if __name__ == '__main__':
         # print(new_results)
         new_results.to_csv(NEW_RESULTS)
         new_results.describe().to_csv(NEW_RESULTS_DESCRIPTION)
+    if not os.path.exists(NEW_RESULTS_PLOT):
+        print("Plotting...")
         plot_accuracy_results(new_results, view=True, filename=NEW_RESULTS_PLOT)
     print(new_results)
     # print(new_results.info())

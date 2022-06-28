@@ -321,7 +321,7 @@ class BaseNeatAgent(BaseAgent, ABC):
                 inputs_palette_filename = ('' if filename is None else filename) + "_inputs_palette.png"
                 plt.savefig(inputs_palette_filename)
                 if view:
-                    plt.show()
+                    plt.show(block=True)
             # if node_colors are provided the default _input_node_colors value is overwritten if present:
             if node_colors is not None:
                 node_colors = _input_node_colors | node_colors

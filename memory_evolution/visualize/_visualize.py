@@ -62,7 +62,7 @@ def plot_stats(statistics, ylog=False, view=False, filename='fitness.svg', ylim=
     plt.tight_layout()
     plt.savefig(filename)
     if view:
-        plt.show()
+        plt.show(block=True)
 
     plt.close()
 
@@ -87,7 +87,7 @@ def plot_species(statistics, view=False, filename='speciation.svg'):
     plt.savefig(filename)
 
     if view:
-        plt.show()
+        plt.show(block=True)
 
     plt.close()
 
