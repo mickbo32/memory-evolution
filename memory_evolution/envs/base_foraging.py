@@ -1,3 +1,4 @@
+import time
 from copy import deepcopy
 import os
 from collections import defaultdict, Counter
@@ -476,12 +477,12 @@ class BaseForagingEnv(gym.Env, MustOverride):
     observation_space: spaces.Box
 
     def __init__(self,
-                 window_size: Union[int, Sequence[int]] = 320,  # (640, 480),
+                 window_size: Union[int, Sequence[int]] = 200,  # 320,  # (640, 480),
                  env_size: Union[float, Sequence[float]] = 1.,
                  n_food_items: int = 3,
                  rotation_step: float = 15.,
                  forward_step: float = .01,
-                 agent_size: float = .10,
+                 agent_size: float = .075,
                  food_size: float = .05,
                  vision_depth: float = .2,
                  vision_field_angle: float = 180.,
@@ -971,7 +972,12 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # compute reward:
         reward = self._update_state(action)
 
+        # update step count:
+        self._step_count += 1
+
         # get the observation from the environment state:
+        # IMPORTANT: update self._step_count before calling self._get_observation(),
+        #            otherwise the cache returns wrong values!!
         observation = self._get_observation()
         if self._observation_noise is not None:
             # add noise
@@ -981,10 +987,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
         # Is it done?:
         done = self._is_done()
 
-        # debugging info:
+        # debugging info: (do it at last)
         info = self._get_info()
 
-        self._step_count += 1
         self.debug_info['step']['count'] = self._step_count
         self.debug_info['step']['running'] = False
         return observation, reward, done, info
@@ -1118,16 +1123,13 @@ class BaseForagingEnv(gym.Env, MustOverride):
             modes = mode.split('+')
             mode_human = 'human' in modes  # re.search(r'^(?:.*\+)?human(?:\+.*)?$', mode)
             mode_observation = 'observation' in modes
-            mode_save = re.search(r'^(?:.*\+)?save\[(?P<save_dir>.*)](?:\+.*)?$', mode)
-            if mode_observation:
-                if not (mode_human or mode_save):
-                    raise ValueError("rendering: cannot render only observation mode, "
-                                     "add (+) at least one among human/save[save_dir]."
-                                     " Example: mode='human+observation'")
+            mode_save = re.search(r'^(?:.*\+)?save\[(?P<save_dir>.*)](?:\+.*)?$', mode)  # if more save[save_dir] are provided, this regex thakes the last one.
             if not (mode_human or mode_save):
                 raise ValueError("rendering: cannot render, "
                                  "add (+) at least one mode among human/save[save_dir]."
-                                 " Example: mode='human+observation'")
+                                 " Example: mode='human+observation'"
+                                 f"; Current mode={mode!r}")
+                # raise ValueError(f"mode={mode!r} is not a valid rendering mode.")
 
         # reset screen if asked:
         if self._rendering_reset_request:
@@ -1164,6 +1166,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
                 self._screen = pg.display.set_mode(window_size)
             else:
                 self._screen = pg.Surface(window_size, pg.SRCALPHA)
+            assert len(self._screen.get_at((0, 0))) == 4, self._screen.get_at((0, 0))
             # self._screen.blit(self._background_img, (0, 0))  # don't need this,
             #   # background is already blit in the self._env_img which will be blit
             #   # later when you do self._render_env(self._screen).
@@ -1213,12 +1216,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
             pg.display.flip()  # pg.display.update()  # TODO: you can update only the rect of _env_img and _obs_img (the rest can be flipped once and it is okay)
 
         # if in 'save' mode, save frames of the main screen.
-        if not mode_human:
-            if mode_save:
-                pg.image.save(self._screen,
-                              os.path.join(mode_save['save_dir'], f"frame_{self._step_count}.jpg"))
-            else:
-                raise ValueError(f"mode={mode!r} is not a valid rendering mode.")
+        if mode_save:
+            pg.image.save(self._screen,
+                          os.path.join(mode_save['save_dir'], f"frame_{self._step_count}.jpg"))
 
         # tick() stops the program, do you want to see everything slowly or just some samples?
         # if you want to slow down and see everything use tick(), otherwise use set_timer()
@@ -1270,28 +1270,18 @@ class BaseForagingEnv(gym.Env, MustOverride):
         logging.info("Environment closed.")
         self.debug_info['close']['running'] = False
 
-    def __get_sizes(self, window_size=None, env_size=None):  # todo: useless, remove it.
-        """Returns window_size and env_size of the environment.
-        If window_size or env_size is not provided (or None) it uses the one
-        of the self object, otherwise it uses the one provided.
-        In the second case, if self._window_size or self._env_size or is not set raises an error."""
-        if window_size is None:
-            if getattr(self, "_window_size", None) is None:
-                raise ValueError(
-                    "If window_size is not provided (or None) it uses the one "
-                    "of the self object, in this case self._window_size should "
-                    "be set, otherwise it is raised an error.")
-            window_size = self._window_size
-        if env_size is None:
-            if getattr(self, "_env_size", None) is None:
-                raise ValueError(
-                    "If env_size is not provided (or None) it uses the one "
-                    "of the self object, in this case self._env_size should "
-                    "be set, otherwise it is raised an error.")
-            env_size = self._env_size
-        return window_size, env_size
-
     def get_env2win_scaling_factor(self):
+        """Scaling factor to obtain a window distance starting from an env distance.
+
+        Examples:
+            Here an examples of how to obtain a window distance starting from a
+            env distance and vice versa.
+
+            >>> window_distance = env_distance * self.get_env2win_scaling_factor()
+
+            >>> env_distance = window_distance / self.get_env2win_scaling_factor()
+
+        """
         return self._env2win_scaling_factor
 
     def get_point_env2win(self, point,
@@ -1414,6 +1404,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         if self._init_agent_position is not None:
             positions = positions + [self._init_agent_position]
         logging.debug(f"_init_state(): init positions: {positions}")
+        assert len(positions) == self._n_food_items + 1, positions
 
         # init agent in a random position:
         pos = positions.pop()
@@ -1437,7 +1428,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
         assert isinstance(self._food_items[0], pg.sprite.Sprite)
         self._food_items_group.empty()  # remove all previous food item sprites from the group
         self._food_items_group.add(*self._food_items)
-        assert len(self._food_items) == len(self._food_items_group)
+        assert len(self._food_items) == len(self._food_items_group) == self._n_food_items
 
         # init landmarks:
         if self._init_landmarks_positions is not None:
@@ -1590,7 +1581,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
     # todo: improve efficiency (and test if efficiency is improved)
     @staticmethod
     def _is_food_item_collected(agent: Agent, food_item: FoodItem) -> bool:
-        """Food item is collected when the agent step upon (or touches) the center of the food item."""
+        """Food item is collected when the agent steps upon (or touches) the center of the food item."""
         # Is the food center inside (or on the border of) the agent circle?
         return is_point_in_circle(food_item.pos, agent.radius, agent.pos)
 
@@ -1602,6 +1593,9 @@ class BaseForagingEnv(gym.Env, MustOverride):
             ``observation_noise`` argument was provided when the environment
             was constructed.
         """
+        assert self.__has_been_ever_reset
+        assert self._step_count is not None
+        # TODO: add a test where you compare observation with or without cache, they should be the same.
         if self.__episode_cache.get('_get_observation__last_step_count', None) != self._step_count:
             self.__episode_cache['_get_observation__last_step_count'] = self._step_count
 
@@ -1629,7 +1623,8 @@ class BaseForagingEnv(gym.Env, MustOverride):
 
     def _get_observation_points(self) -> np.ndarray:
         assert self.__has_been_ever_reset
-
+        assert self._step_count is not None
+        # TODO: add a test where you compare observation_points with or without cache, they should be the same.
         if self.__episode_cache.get('_get_observation_points__last_step_count', None) != self._step_count:
             self.__episode_cache['_get_observation_points__last_step_count'] = self._step_count
 
@@ -1771,7 +1766,7 @@ class BaseForagingEnv(gym.Env, MustOverride):
     def _is_done(self) -> bool:
         done = False
         if self._max_steps is not None:
-            done = done or self._step_count >= self._max_steps - 1
+            done = done or self._step_count >= self._max_steps
 
         assert self._food_items_collected <= self.n_food_items, (self._food_items_collected, self.n_food_items)
         done = done or self._food_items_collected >= self.n_food_items

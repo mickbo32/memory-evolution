@@ -2,6 +2,7 @@ import os.path
 from abc import ABC, abstractmethod
 from collections import defaultdict, Counter
 from collections.abc import Callable, Iterable, Sequence
+import hashlib
 import logging
 import math
 import multiprocessing
@@ -49,6 +50,7 @@ def evaluate_agent(agent,
                    save_gif: bool = False,
                    save_gif_dir: str = None,
                    save_gif_name: str = "frames.gif",
+                   # TODO: seed parameter (anyway you can obtain this also by seeding the env and the agent before calling, but of course is better to have a seed here, so you can run multiple evaluation with the same seed if you want without creating the env and the agent again)
                    ) -> Union[float, np.ndarray]:
     """Evaluate agent in a gym environment and return the fitness of the agent.
 
@@ -114,9 +116,10 @@ def evaluate_agent(agent,
         logging.debug(f"temp_dir: {temp_dir!r}")
         logging.debug(f"save_gif_dir: {save_gif_dir!r}")
     episode_str = ''
-    rendering_mode = 'observation+'
+    rendering_mode_base = 'observation'
     if render:
-        rendering_mode += 'human'
+        rendering_mode_base += '+human'
+    rendering_mode = rendering_mode_base
     fitnesses = []
     for i_episode in range(episodes):
         msg = f'Starting episode #{i_episode} ...'
@@ -124,7 +127,8 @@ def evaluate_agent(agent,
         # if render:
         #     print(msg)
         if save_gif:
-            if rendering_mode:
+            rendering_mode = rendering_mode_base
+            if rendering_mode:  # add a plus if there is already an element in the rendering mode string
                 rendering_mode += '+'
             rendering_mode += 'save[' + save_gif_dir
             if episodes > 1:
@@ -132,10 +136,13 @@ def evaluate_agent(agent,
                 if keep_frames:
                     rendering_mode += episode_str
             rendering_mode += ']'
+        logging.debug(rendering_mode)
         start_time_episode_including_reset = time.perf_counter_ns()
         # Reset env and agent:
         observation, info = env.reset(return_info=True)
         agent.reset()
+        logging.debug(f"env.agent.pos: {env.agent.pos}; "
+                      f"env.agent.head_direction: {env.agent.head_direction};")
         if isinstance(env, memory_evolution.envs.BaseForagingEnv) and info['env_info']['init_agent_position'] is None:
             env_agent = info['state']['agent']
             first_agent_pos = env_agent.pos
@@ -176,8 +183,12 @@ def evaluate_agent(agent,
                 assert env.step_count == step + 1, (env.step_count, step)
             total_reward += reward
             if render or save_gif:
-                logging.debug(f"Observation hash: {hash(observation.tobytes())}")
-                logging.debug(f"Action hash: {hash(action.tobytes())}")
+                assert isinstance(observation, np.ndarray), type(observation)
+                assert isinstance(action, np.ndarray), type(action)
+                # python hash() function is not consistent across runs.
+                # todo: using hashlib is slow, find an alternative hash (maybe write yourself)
+                logging.debug(f"Observation hash: {hashlib.sha1(observation.tobytes()).hexdigest()}")
+                logging.debug(f"Action hash: {hashlib.sha1(action.tobytes()).hexdigest()}")
                 # # print("Observation:", observation, sep='\n')
                 # print("Action:", action, sep=' ')
                 # # print(info['state']['agent'])
@@ -213,7 +224,7 @@ def evaluate_agent(agent,
         fitnesses.append(fitness)
         if done:
             if isinstance(env, memory_evolution.envs.BaseForagingEnv):
-                assert step == env.step_count == info['debug_info']['_is_done']['step_count'] + 1, (
+                assert step == env.step_count == info['debug_info']['_is_done']['step_count'], (
                     step, env.step_count, info['debug_info']['_is_done']['step_count'])
                 assert info['debug_info']['_is_done']['done'] is True, info['debug_info']['_is_done']
                 assert (info['debug_info']['_is_done']['food_items_collected'] == info['debug_info']['_is_done']['n_food_items']
@@ -261,7 +272,7 @@ def evaluate_agent(agent,
                 #       e non 100+ come nella gif che semplicemente aggrega tutti i frames.
         else:
             if isinstance(env, memory_evolution.envs.BaseForagingEnv):
-                assert step == env.step_count == info['debug_info']['_is_done']['step_count'] + 1, (
+                assert step == env.step_count == info['debug_info']['_is_done']['step_count'], (
                     step, env.step_count, info['debug_info']['_is_done']['step_count'])
                 assert info['debug_info']['_is_done']['done'] is False, info['debug_info']['_is_done']
                 assert not (info['debug_info']['_is_done']['food_items_collected'] == info['debug_info']['_is_done']['n_food_items']
@@ -270,7 +281,7 @@ def evaluate_agent(agent,
                 f"Episode has not finished after {step} timesteps"
                 f" and {end_t} simulated seconds"
                 f" (in {(end_time_episode - start_time_episode) / 10 ** 9} actual seconds).")
-    if save_gif and save_gif_dir is None:
+    if save_gif and not keep_frames:
         temp_dir.cleanup()
     if episodes_aggr_func is not None:
         final_fitness = getattr(np, episodes_aggr_func)(fitnesses)

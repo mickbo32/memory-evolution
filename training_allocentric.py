@@ -236,30 +236,18 @@ if __name__ == '__main__':
     # Phenotype.eval_episodes_aggr_func = 'median'
     # Phenotype.eval_episodes_aggr_func = 'mean'
     # #
-    USER_DEFINED_FITNESS_FUNC = False
     ff_time = memory_evolution.evaluate.fitness_func_time_minimize
-    ff_dist = memory_evolution.evaluate.FitnessDistanceMinimize(target_pos)
     min_ff_time = ff_time(reward=None, steps=max_steps, done=None, env=None, agent=None)
-    min_ff_dist = -memory_evolution.geometry.euclidean_distance((0., 0.), env.env_size)
-    if USER_DEFINED_FITNESS_FUNC:
-        def fitness_func(*, reward, steps, done, env, agent, **kwargs) -> float:
-            ft = ff_time(reward=reward, steps=steps, done=done, env=env, agent=agent, **kwargs)
-            assert min_ff_time <= ft <= ff_time.max
-            fitness = ft
-            if ft <= min_ff_time:
-                fd = ff_dist(reward=reward, steps=steps, done=done, env=env, agent=agent, **kwargs)
-                assert min_ff_dist <= fd <= ff_dist.max
-                fitness -= ff_dist.max - fd
-            # print(fitness, fd if 'fd' in locals() else None)
-            return fitness
-        fitness_func.min = min_ff_time - (ff_dist.max - min_ff_dist)
-        fitness_func.max = ff_time.max
-        assert fitness_func.min < min_ff_time, (fitness_func.min, min_ff_time, ff_dist.max, min_ff_dist)
-        print(f"Fitness bounds: min={fitness_func.min} max={fitness_func.max}")
-        Phenotype.fitness_func = fitness_func
-    else:
-        fitness_func = ff_time
-        Phenotype.fitness_func = fitness_func
+    # user defined fitness_func (outside any module, just in main) so it can be pickled with dill.
+    def fitness_func(*, reward, steps, done, env, agent, **kwargs) -> float:
+        ft = ff_time(reward=reward, steps=steps, done=done, env=env, agent=agent, **kwargs)
+        assert min_ff_time <= ft <= ff_time.max
+        fitness = ft
+        return fitness
+    fitness_func.min = min_ff_time
+    fitness_func.max = ff_time.max
+    print(f"Fitness bounds: min={fitness_func.min} max={fitness_func.max}")
+    Phenotype.fitness_func = fitness_func
     #
     Phenotype.eval_num_episodes = 20
     Phenotype.eval_episodes_aggr_func = 'mean'
@@ -289,13 +277,11 @@ if __name__ == '__main__':
         for name, value in _Phenotype_attrs.items():
             setattr(Phenotype_, name, value)
     assert Phenotype is Phenotype_  # both pickle (classes) and dill (module classes)
-    if USER_DEFINED_FITNESS_FUNC:
-        # assert Phenotype.fitness_func is Phenotype_.fitness_func is fitness_func  # pickle
-        assert Phenotype.fitness_func is Phenotype_.fitness_func is not fitness_func  # dill
+    # assert Phenotype.fitness_func is Phenotype_.fitness_func is fitness_func  # pickle
+    assert Phenotype.fitness_func is Phenotype_.fitness_func is not fitness_func  # dill
     assert memory_evolution.evaluate.fitness_func_total_reward in memory_evolution.evaluate.__dict__.values()
-    if USER_DEFINED_FITNESS_FUNC:
-        # assert fitness_func not in memory_evolution.evaluate.__dict__.values()
-        assert Phenotype_.fitness_func not in memory_evolution.evaluate.__dict__.values()  # dill
+    # assert fitness_func not in memory_evolution.evaluate.__dict__.values()
+    assert Phenotype_.fitness_func not in memory_evolution.evaluate.__dict__.values()  # dill
 
     logging.info(f"Phenotype: {Phenotype.__qualname__}")
     logging.info(f"Phenotype.fitness_func: {Phenotype.fitness_func}")
@@ -351,17 +337,19 @@ if __name__ == '__main__':
 
     # ----- CLOSING AND REPORTING -----
 
+    ACCURACY_TRIALS = 200
+
     # testing the agent first arm accuracy:
     accuracy = memory_evolution.evaluate.test_agent_first_arm_accuracy(
-        agent, env, episodes=200,
+        agent, env, episodes=ACCURACY_TRIALS,
         render=False)
-    print(f"test_agent_first_arm_accuracy: {accuracy}")
+    print(f"test_agent_first_arm_accuracy (n={ACCURACY_TRIALS}): {accuracy}")
 
     # test general target-reached rate (to discriminate bad v.s. border-follower v.s. allocentric/egocentric successful agents):
     target_reached_rate = memory_evolution.evaluate.test_agent_target_reached_rate(
-        agent, env, episodes=200,
+        agent, env, episodes=ACCURACY_TRIALS,
         render=False)
-    print(f"test_agent_target_reached_rate: {target_reached_rate}")
+    print(f"test_agent_target_reached_rate (n={ACCURACY_TRIALS}): {target_reached_rate}")
 
     # fitness:
     print(f"BestGenomeFitness: {winner.fitness}")
