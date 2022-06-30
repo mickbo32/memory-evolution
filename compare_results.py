@@ -31,7 +31,8 @@ from memory_evolution.logging import set_main_logger
 
 from memory_evolution.load import load_env, load_agent, get_checkpoint_number, AVAILABLE_LOADING_METHODS
 
-from analyse_results import plot_bars, plot_avg_df
+from analyse_results import plot_bars, plot_box, plot_avg_df
+from analyse_results import plot_best_fitness, plot_genome_metrics
 
 
 def plot_accuracy_results(dfs_results: Sequence[pd.DataFrame],
@@ -72,84 +73,9 @@ def plot_accuracy_results(dfs_results: Sequence[pd.DataFrame],
         print(results)
         print()
 
-        plot_bars(results, axes[j], ylabel=results.name, color=color, ylim=ylim[j], std=False, box=True)
+        # plot_bars(results, axes[j], ylabel=results.name, color=color, ylim=ylim[j], std=True)
+        plot_box(results, axes[j], ylabel=results.name, ylim=ylim[j])
     fig.suptitle(f"Results (averaged across {len(experiments)} evolution processes)")
-
-    plt.tight_layout()
-    if filename is not None:
-        plt.savefig(filename)
-    if view:
-        plt.show(block=True)
-
-    plt.close()
-
-
-def plot_best_fitness(best_fitness: pd.DataFrame, ylog=False, view=True, filename=None, ylim=None, save_csv=True):
-    """ Plots the populations' best fitness over generations.
-
-    If ``filename`` is None, don't save.
-    """
-
-    # fig, ax = plt.subplots(1)
-    # avg_best_fitness = best_fitness.mean(axis=0)
-    # ax.plot(generation, avg_best_fitness, 'b-', label="average best fitness")
-    # ax.plot(generation, best_fitness.max(axis=0), '--', color='gray', label="max")
-    # ax.plot(generation, best_fitness.min(axis=0), '--', color='gray', label="min")
-    # ax.fill_between(generation,
-    #                 avg_best_fitness - best_fitness.std(axis=0), avg_best_fitness + best_fitness.std(axis=0),
-    #                 facecolor='yellow', alpha=0.5, label='\u00B11 std')
-    ax = plot_avg_df(best_fitness, avg_label="average best fitness")
-
-    plt.title(f"Population's best fitness (averaged across {len(best_fitness)} evolution processes)")
-    ax.set_xlabel("Generations")
-    ax.set_ylabel("Fitness")
-    ax.grid()
-    ax.legend(loc="best")
-    if ylog:
-        base = 10
-        # ax.set_yscale('symlog')
-        ax.set_yscale(mpl.scale.SymmetricalLogScale(ax, base=base, linthresh=1, subs=[2.5, 5, 7.5]))
-        ax.grid(True, which='minor', color='gainsboro', linestyle=':', linewidth=.5)
-        if ylim is not None:
-            pass  # todo: yticks
-    if ylim is not None:
-        ax.set_ylim(ylim)  # ax.set_ylim([ymin, ymax])
-        # ax.xlim(right=xmax)  # xmax is your value
-        # ax.xlim(left=xmin)  # xmin is your value
-        # ax.ylim(top=ymax)  # ymax is your value
-        # ax.ylim(bottom=ymin)  # ymin is your value
-
-    plt.tight_layout()
-    if filename is not None:
-        plt.savefig(filename)
-    if view:
-        plt.show(block=True)
-
-    plt.close()
-
-
-def plot_genome_metrics(nodes: pd.DataFrame, connections: pd.DataFrame,
-                        # ylog=False,
-                        view=True, filename=None, ylim=None, save_csv=True):
-    """ Plots the populations' best genome metrics over generations.
-
-    If ``filename`` is None, don't save.
-    """
-    assert len(nodes) == len(connections)
-    assert len(nodes.index) == len(connections.index)
-    assert len(nodes.columns) == len(connections.columns)
-
-    fig, ax = plt.subplots(1)
-    plot_avg_df(nodes, ax=ax, avg_label="average nodes (without inputs)", avg_color='g', show_maxminstd_label=False)
-    plot_avg_df(connections, ax=ax, avg_label="average connections", avg_color='b')
-
-    plt.title(f"Population's best genome (averaged across {len(nodes)} evolution processes)")
-    ax.set_xlabel("Generations")
-    ax.set_ylabel("Number of")
-    ax.grid()
-    ax.legend(loc="best")
-    if ylim is not None:
-        ax.set_ylim(ylim)
 
     plt.tight_layout()
     if filename is not None:
@@ -183,6 +109,7 @@ if __name__ == '__main__':
     ALLO_AGENT_DIR = f"logs/saved_logs/outputs-link/{ALLO_DIR_TAG}/logs/"
     EGO_AGENT_DIR = f"logs/saved_logs/outputs-link/{EGO_DIR_TAG}/logs/"
     LOGGING_DIR = 'logs'
+    VIEW = False
 
     # logging settings:
     LOGGING_DIR, UTCNOW = set_main_logger(file_handler_all=None,
@@ -224,10 +151,10 @@ if __name__ == '__main__':
                           x_lables=('Allocentric task', 'Egocentric task'),
                           view=True,
                           filename=os.path.join(LOGGING_DIR, LOADED_DIR_TAG_UTCNOW + '_' + DIR_TAG + '_results.png'),
-                          ylim=((-.05, 1.05), (-.05, 1.05), (-400, -0)),
+                          ylim=((-.05, 1.05), (-.05, 1.05), (-90, -60)),  # ((-.05, 1.05), (-.05, 1.05), (-405, -0)),
                           color=('#999999', 'lightblue'))
     print('\n')
-    sys.exit()
+    #sys.exit()
 
     # --- stats and genome stats on evolution visualization ---
     ALLO_BEST_FITNESS_PLOT = os.path.join(ALLO_AGENT_DIR, ALLO_DIR_TAG + '_best_fitness.png')
@@ -266,24 +193,27 @@ if __name__ == '__main__':
     # offset = ylim_range * .03
     # ylim = (ylim[0] - offset, ylim[1] + offset)
     plot_best_fitness(allo_best_fitness,
-                      view=True,
+                      view=VIEW,
                       # filename=None,
-                      filename=os.path.join(LOGGING_DIR, LOADED_DIR_TAG_UTCNOW + '__' + ALLO_DIR_TAG + '_best_fitness.png'),
+                      filename=os.path.join(LOGGING_DIR, LOADED_DIR_TAG_UTCNOW + '__' + ALLO_DIR_TAG + '_best_fitness.pdf'),  # png'),
                       ylim=ylim)
     plot_best_fitness(ego_best_fitness,
-                      view=True,
+                      view=VIEW,
                       # filename=None,
-                      filename=os.path.join(LOGGING_DIR, LOADED_DIR_TAG_UTCNOW + '__' + EGO_DIR_TAG + '_best_fitness.png'),
+                      filename=os.path.join(LOGGING_DIR, LOADED_DIR_TAG_UTCNOW + '__' + EGO_DIR_TAG + '_best_fitness.pdf'),  # png'),
                       ylim=ylim)
 
+    ylim = (-3, 80)
     plot_genome_metrics(allo_nodes, allo_connections,
-                        view=True,  # ylim=(0,1),
+                        view=VIEW,
                         # filename=None,
-                        filename=os.path.join(LOGGING_DIR, LOADED_DIR_TAG_UTCNOW + '__' + ALLO_DIR_TAG + '_genome_metrics.png'))
+                        filename=os.path.join(LOGGING_DIR, LOADED_DIR_TAG_UTCNOW + '__' + ALLO_DIR_TAG + '_genome_metrics.pdf'),  # png'),
+                        ylim=ylim)
     plot_genome_metrics(ego_nodes, ego_connections,
-                        view=True,  # ylim=(0,1),
+                        view=VIEW,
                         # filename=None,
-                        filename=os.path.join(LOGGING_DIR, LOADED_DIR_TAG_UTCNOW + '__' + EGO_DIR_TAG + '_genome_metrics.png'))
+                        filename=os.path.join(LOGGING_DIR, LOADED_DIR_TAG_UTCNOW + '__' + EGO_DIR_TAG + '_genome_metrics.pdf'),  # png'),
+                        ylim=ylim)
     print('\n')
 
     # --- closing ---

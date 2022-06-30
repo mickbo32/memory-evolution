@@ -32,13 +32,11 @@ from memory_evolution.load import load_env, load_agent, get_checkpoint_number, A
 
 
 def plot_bars(df: pd.DataFrame, ax, ylabel=None, title=None, ylim=None,
-              std=True, box=False,
+              std=True,
               color=None, ecolor='black', mincolor='gray', maxcolor='gray',
               alpha=0.5,
               ):
     """Plot metrics along axis=0"""
-    if sum((std, box)) > 1:
-        raise ValueError("select no more than one among 'std' and 'box'")
     x = np.arange(len(df.columns))
     std_bars = {}
     if std:
@@ -49,9 +47,6 @@ def plot_bars(df: pd.DataFrame, ax, ylabel=None, title=None, ylim=None,
     if std:
         ax.plot(x, df.max(axis=0), 'x', color=maxcolor)  # you can also use plt.scatter()
         ax.plot(x, df.min(axis=0), 'x', color=mincolor)  # you can also use plt.scatter()
-    if box:
-        cmap = plt.get_cmap("tab10")
-        df.boxplot(ax=ax, positions=x, widths=.5, capprops={'color': cmap(0)})  # , showfliers=False, showmeans=True, sym='x', flierprops={'color': 'gray'}
 
     if ylabel is not None:
         ax.set_ylabel(ylabel)
@@ -60,6 +55,31 @@ def plot_bars(df: pd.DataFrame, ax, ylabel=None, title=None, ylim=None,
     ax.set_xticks(x)
     ax.set_xticklabels(df.columns)
     ax.yaxis.grid(True)
+    if title is not None:
+        ax.set_title(title)
+    return x
+
+
+def plot_box(df: pd.DataFrame, ax, ylabel=None, title=None, ylim=None):
+    """Plot metrics along axis=0"""
+    x = np.arange(len(df.columns))
+    cmap = plt.get_cmap("tab10")
+    df.boxplot(
+        ax=ax, positions=x, widths=.5,
+        capprops={'color': cmap(0)},
+        flierprops=dict(markeredgecolor='dimgray'),
+        # showfliers=False,
+        # showmeans=True, meanprops=dict(marker='x', markeredgecolor='black', markerfacecolor=cmap(0)),
+    )  # , showfliers=False, showmeans=True, sym='x', flierprops={'color': 'gray'}
+
+    if ylabel is not None:
+        ax.set_ylabel(ylabel)
+    if ylim is not None:
+        ax.set_ylim(ylim)
+    ax.set_xticks(x)
+    ax.set_xticklabels(df.columns)
+    ax.yaxis.grid(True)
+    ax.xaxis.grid(False)
     if title is not None:
         ax.set_title(title)
     return x
@@ -82,10 +102,10 @@ def plot_accuracy_results(all_results: pd.DataFrame, view=True, filename=None):
 
     fig, axes = plt.subplots(1, 2, figsize=(6.4 * 1.6, 4.8))
     x = np.arange(len(all_results.columns))
-    plot_bars(accuracy_results, axes[0], ylabel="Accuracy (%)",
-              title=f"Accuracy results (averaged across {len(all_results.index)} evolution processes)")
-    plot_bars(fitness_results, axes[1], ylabel="Fitness",
-              title=f"Best fitness (averaged across {len(all_results.index)} evolution processes)")
+    plot_box(accuracy_results, axes[0], ylabel="Accuracy (%)",
+             title=f"Accuracy results (averaged across {len(all_results.index)} evolution processes)")
+    plot_box(fitness_results, axes[1], ylabel="Fitness",
+             title=f"Best fitness (averaged across {len(all_results.index)} evolution processes)")
 
     plt.tight_layout()
     if filename is not None:
@@ -96,21 +116,27 @@ def plot_accuracy_results(all_results: pd.DataFrame, view=True, filename=None):
     plt.close()
 
 
-def plot_avg_df(df: pd.DataFrame, ax=None, avg_label="average", avg_color='b', show_maxminstd_label=True):
+def plot_avg_df(df: pd.DataFrame, ax=None, avg_label="average", avg_color='b',
+                std_facecolor='yellow',
+                show_max=True, show_min=True, show_std=True,
+                show_maxminstd_label=True,
+                ):
     """Plot metrics along axis=0"""
     if ax is None:
         fig, ax = plt.subplots(1)
     avg_df = df.mean(axis=0)
-    # ax.plot(df.columns, avg_df, 'b-', label=avg_label)
     ax.plot(df.columns, avg_df, '-', color=avg_color, label=avg_label)
-    kwargs = {'label': "max"} if show_maxminstd_label else {}
-    ax.plot(df.columns, df.max(axis=0), '--', color='gray', **kwargs)
-    kwargs = {'label': "min"} if show_maxminstd_label else {}
-    ax.plot(df.columns, df.min(axis=0), '--', color='gray', **kwargs)
-    kwargs = {'label': '\u00B11 std'} if show_maxminstd_label else {}
-    ax.fill_between(df.columns,
-                    avg_df - df.std(axis=0), avg_df + df.std(axis=0),
-                    facecolor='yellow', alpha=0.5, **kwargs)
+    if show_max:
+        kwargs = {'label': "max"} if show_maxminstd_label else {}
+        ax.plot(df.columns, df.max(axis=0), '--', color='gray', **kwargs)
+    if show_min:
+        kwargs = {'label': "min"} if show_maxminstd_label else {}
+        ax.plot(df.columns, df.min(axis=0), '--', color='gray', **kwargs)
+    if show_std:
+        kwargs = {'label': '\u00B11 std'} if show_maxminstd_label else {}
+        ax.fill_between(df.columns,
+                        avg_df - df.std(axis=0), avg_df + df.std(axis=0),
+                        facecolor=std_facecolor, alpha=0.5, **kwargs)
     return ax
 
 
@@ -219,7 +245,7 @@ def get_genome_metrics(all_stats, filename=None) -> (pd.DataFrame, pd.DataFrame)
 
 def plot_genome_metrics(nodes: pd.DataFrame, connections: pd.DataFrame,
                         # ylog=False,
-                        view=True, filename=None, ylim=None, save_csv=True):
+                        view=True, filename=None, ylim=None):
     """ Plots the populations' best genome metrics over generations.
 
     If ``filename`` is None, don't save.
@@ -229,10 +255,14 @@ def plot_genome_metrics(nodes: pd.DataFrame, connections: pd.DataFrame,
     assert len(nodes.columns) == len(connections.columns)
 
     fig, ax = plt.subplots(1)
-    plot_avg_df(nodes, ax=ax, avg_label="average nodes (without inputs)", avg_color='g', show_maxminstd_label=False)
-    plot_avg_df(connections, ax=ax, avg_label="average connections", avg_color='b')
+    # plot_avg_df(nodes, ax=ax, avg_label="average nodes (without inputs)", avg_color='g', show_maxminstd_label=False)
+    # plot_avg_df(connections, ax=ax, avg_label="average connections", avg_color='b')
+    plot_avg_df(nodes, ax=ax, avg_label="average nodes (without inputs)", avg_color='g',
+                show_max=False, show_min=False, std_facecolor='g')
+    plot_avg_df(connections, ax=ax, avg_label="average connections", avg_color='b',
+                show_max=False, show_min=False, std_facecolor='b')
 
-    plt.title(f"Population's best genome (averaged across {len(nodes)} evolution processes)")
+    # plt.title(f"Population's best genome (averaged across {len(nodes)} evolution processes)")
     ax.set_xlabel("Generations")
     ax.set_ylabel("Number of")
     ax.grid()

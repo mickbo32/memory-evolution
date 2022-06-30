@@ -97,10 +97,9 @@ if __name__ == '__main__':
                           x_lables=x_labels,
                           view=True,
                           filename=os.path.join(LOGGING_DIR, LOADED_DIR_TAG_UTCNOW + '_' + TAG + '_results.png'),
-                          ylim=((0, 1.05), (0, 1.05), (-400, -0)),  # ((0, 1.05), (0, 1.05), (-400, -0)),  # (None, None, (-100, -50)),,  # (None, None, (-400, -0)),
+                          ylim=((-.05, 1.05), (-.05, 1.05), (-405, -0)),  # ((0, 1.05), (0, 1.05), (-400, -0)),  # (None, None, (-100, -50)),,  # (None, None, (-400, -0)),
                           color=('#999999', 'lightblue', 'lightgreen'))
     print('\n')
-    sys.exit()
 
 
     # --- closing ---
